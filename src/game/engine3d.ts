@@ -29,6 +29,7 @@ interface WorldObj {
   z: number;
   mesh: THREE.Object3D;
   spin?: THREE.Object3D;
+  card?: THREE.Object3D;
   done?: boolean;
 }
 
@@ -52,6 +53,20 @@ export class Runner3D {
 
   private envTiles: THREE.Object3D[] = [];
   private envDepth = 60;
+  private envWrapDist = 180;
+  private envSource: THREE.Object3D | null = null;
+  private charRoot?: THREE.Object3D;
+  private charBaseScale = 1;
+
+  /** Live-tunable scene parameters, driven by the ?debug tuning panel. */
+  tune = {
+    env: { targetWidth: 24, sideX: 15, offX: 0, offY: 0, offZ: 0, rotDeg: 90, cityScale: 16 },
+    camera: { x: 0, y: 3.0, z: 6.4, lookX: 0, lookY: 1.1, lookZ: -6, fov: 58 },
+    char: { scale: 1, offY: 0, offZ: 0 },
+    product: { size: 1.1, y: 1.15 },
+    banner: { width: 5.2, y: 2.4 },
+    fog: { near: 40, far: 88 },
+  };
   private character?: THREE.Object3D;
   private bones: Record<string, THREE.Bone> = {};
   private objects: WorldObj[] = [];
@@ -108,11 +123,10 @@ export class Runner3D {
 
     const sky = new THREE.Color("#aecbe6");
     this.scene.background = sky;
-    this.scene.fog = new THREE.Fog(sky, 40, 88);
+    this.scene.fog = new THREE.Fog(sky, this.tune.fog.near, this.tune.fog.far);
 
-    this.camera = new THREE.PerspectiveCamera(58, 1, 0.1, 200);
-    this.camera.position.set(0, 3.0, 6.4);
-    this.camera.lookAt(0, 1.1, -6);
+    this.camera = new THREE.PerspectiveCamera(this.tune.camera.fov, 1, 0.1, 200);
+    this.applyCamera();
 
     const hemi = new THREE.HemisphereLight(0xffffff, 0x5a6272, 1.15);
     this.scene.add(hemi);
@@ -148,6 +162,69 @@ export class Runner3D {
       line.position.set(x, 0.02, (SPAWN_Z + DESPAWN_Z) / 2);
       this.scene.add(line);
     }
+  }
+
+  /* ------------------------- live tuning (debug) ------------------------ */
+
+  applyCamera() {
+    const c = this.tune.camera;
+    this.camera.position.set(c.x, c.y, c.z);
+    this.camera.lookAt(c.lookX, c.lookY, c.lookZ);
+    this.camera.fov = c.fov;
+    this.camera.updateProjectionMatrix();
+  }
+  applyFog() {
+    if (this.scene.fog instanceof THREE.Fog) {
+      this.scene.fog.near = this.tune.fog.near;
+      this.scene.fog.far = this.tune.fog.far;
+    }
+  }
+  applyChar() {
+    if (!this.charRoot) return;
+    this.charRoot.scale.setScalar(this.charBaseScale * this.tune.char.scale);
+    this.charRoot.updateMatrixWorld(true);
+    const b = new THREE.Box3().setFromObject(this.charRoot);
+    this.charRoot.position.y = -b.min.y + this.tune.char.offY;
+    this.charRoot.position.z = this.tune.char.offZ;
+  }
+  applyProducts() {
+    for (const o of this.objects)
+      if (o.kind === "product" && o.card) {
+        o.card.scale.setScalar(this.tune.product.size);
+        o.card.position.y = this.tune.product.y;
+      }
+  }
+  applyBanners() {
+    for (const o of this.objects)
+      if (o.kind === "banner" && o.card) {
+        o.card.scale.setScalar(this.tune.banner.width);
+        o.card.position.y = this.tune.banner.y;
+      }
+  }
+  rebuildEnv() {
+    for (const t of this.envTiles) {
+      this.scene.remove(t);
+      this.disposeObj(t);
+    }
+    this.envTiles = [];
+    if (this.envSource) this.setupEnvironment(this.envSource);
+  }
+
+  /** Apply a tuning change by dotted path, e.g. setTune("camera.y", 3.2). */
+  setTune(path: string, value: number) {
+    const [group, key] = path.split(".");
+    const g = (this.tune as unknown as Record<string, Record<string, number>>)[group];
+    if (!g || !(key in g)) return;
+    g[key] = value;
+    if (group === "camera") this.applyCamera();
+    else if (group === "fog") this.applyFog();
+    else if (group === "char") this.applyChar();
+    else if (group === "product") this.applyProducts();
+    else if (group === "banner") this.applyBanners();
+    else if (group === "env") this.rebuildEnv();
+  }
+  getTune() {
+    return this.tune;
   }
 
   /* ------------------------------ loading ------------------------------- */
@@ -194,8 +271,10 @@ export class Runner3D {
       }).catch(() => null),
     ]);
 
-    if (env) this.setupEnvironment(env);
-    else this.addFallbackGround();
+    if (env) {
+      this.envSource = env;
+      this.setupEnvironment(env);
+    } else this.addFallbackGround();
     if (char) this.setupCharacter(char);
     else this.addFallbackCharacter();
 
@@ -225,6 +304,11 @@ export class Runner3D {
   }
 
   private setupEnvironment(root: THREE.Object3D) {
+    if (this.cfg.game.environment === "subway") this.setupSubway(root);
+    else this.setupCity(root);
+  }
+
+  private setupCity(root: THREE.Object3D) {
     // Orient so the longest horizontal axis runs along Z (the track), sit on y=0.
     const box = new THREE.Box3().setFromObject(root);
     const size = new THREE.Vector3();
@@ -233,17 +317,16 @@ export class Runner3D {
     box.getCenter(center);
 
     // Scale so the street is a sensible width for 3 lanes (~16 units wide).
+    const t = this.tune.env;
     const horizWidth = Math.min(size.x, size.z);
-    const scale = horizWidth > 0 ? 16 / horizWidth : 1;
+    const scale = horizWidth > 0 ? t.cityScale / horizWidth : 1;
 
     const makeTile = (obj: THREE.Object3D) => {
       const g = new THREE.Group();
       obj.scale.setScalar(scale);
-      // recenter on X and place on ground
-      obj.position.x = -center.x * scale;
+      obj.position.x = -center.x * scale + t.offX;
       obj.position.z = -center.z * scale;
-      obj.position.y = -box.min.y * scale;
-      // if length runs along X, rotate 90° so it runs along Z
+      obj.position.y = -box.min.y * scale + t.offY;
       if (size.x > size.z) obj.rotation.y = Math.PI / 2;
       g.add(obj);
       return g;
@@ -251,15 +334,71 @@ export class Runner3D {
 
     const depth = (size.x > size.z ? size.x : size.z) * scale;
     this.envDepth = depth > 4 ? depth : 60;
+    this.envWrapDist = this.envDepth * 3;
 
-    const tileA = makeTile(root);
+    const tileA = makeTile(root.clone(true));
     const tileB = makeTile(root.clone(true));
     const tileC = makeTile(root.clone(true));
-    tileA.position.z = 0;
-    tileB.position.z = -this.envDepth;
-    tileC.position.z = -this.envDepth * 2;
+    tileA.position.z = t.offZ;
+    tileB.position.z = -this.envDepth + t.offZ;
+    tileC.position.z = -this.envDepth * 2 + t.offZ;
     this.envTiles = [tileA, tileB, tileC];
-    this.envTiles.forEach((t) => this.scene.add(t));
+    this.envTiles.forEach((t2) => this.scene.add(t2));
+  }
+
+  /**
+   * The subway asset is a large diorama, not a tileable street. We rotate its
+   * long axis to run down -Z, scale to a runnable width, recentre using the
+   * POST-transform bounds (so rotation doesn't throw off centring), sit it on
+   * the ground, then tile it. Tunables below are set by visual iteration.
+   */
+  private setupSubway(root: THREE.Object3D) {
+    // This asset is an elevated bridge diorama, so we flank the run corridor
+    // with it on both sides (as passing subway scenery) rather than run on it.
+    const tune = this.tune.env;
+    const ROT_Y = (tune.rotDeg * Math.PI) / 180; // long axis runs down -Z
+    const TARGET_WIDTH = tune.targetWidth; // scaled model span
+    const SIDE_X = tune.sideX; // push each copy out to the sides of the road
+    const TILES = 3;
+
+    const box0 = new THREE.Box3().setFromObject(root);
+    const size0 = new THREE.Vector3();
+    box0.getSize(size0);
+    const scale = size0.z > 0 ? TARGET_WIDTH / size0.z : 1;
+
+    // Probe one transformed copy to get its centred depth.
+    const probe = root.clone(true);
+    probe.scale.setScalar(scale);
+    probe.rotation.y = ROT_Y;
+    probe.updateMatrixWorld(true);
+    const pb = new THREE.Box3().setFromObject(probe);
+    const pbSize = new THREE.Vector3();
+    pb.getSize(pbSize);
+    const pbCenter = new THREE.Vector3();
+    pb.getCenter(pbCenter);
+    this.envDepth = pbSize.z > 4 ? pbSize.z : 60;
+    this.envWrapDist = this.envDepth * TILES;
+
+    const makeTile = (side: 1 | -1, i: number) => {
+      const obj = root.clone(true);
+      obj.scale.setScalar(scale);
+      obj.rotation.y = ROT_Y + (side < 0 ? Math.PI : 0); // mirror the far side
+      obj.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(obj);
+      const c = new THREE.Vector3();
+      b.getCenter(c);
+      obj.position.x = -c.x + side * SIDE_X + tune.offX;
+      obj.position.z = -c.z - i * this.envDepth + tune.offZ;
+      obj.position.y = -b.min.y + tune.offY;
+      const g = new THREE.Group();
+      g.add(obj);
+      this.scene.add(g);
+      this.envTiles.push(g);
+    };
+
+    this.envTiles = [];
+    for (const side of [1, -1] as const)
+      for (let i = 0; i < TILES; i++) makeTile(side, i);
   }
 
   private addFallbackGround() {
@@ -276,11 +415,12 @@ export class Runner3D {
     const box = new THREE.Box3().setFromObject(root);
     const size = new THREE.Vector3();
     box.getSize(size);
-    const scale = size.y > 0 ? CHAR_HEIGHT / size.y : 1;
-    root.scale.setScalar(scale);
+    this.charBaseScale = size.y > 0 ? CHAR_HEIGHT / size.y : 1;
+    this.charRoot = root;
+    root.scale.setScalar(this.charBaseScale * this.tune.char.scale);
     const box2 = new THREE.Box3().setFromObject(root);
-    root.position.y = -box2.min.y;
-    root.position.z = 0;
+    root.position.y = -box2.min.y + this.tune.char.offY;
+    root.position.z = this.tune.char.offZ;
 
     const wrap = new THREE.Group();
     wrap.add(root);
@@ -519,7 +659,7 @@ export class Runner3D {
     for (const t of this.envTiles) {
       t.position.z += dz;
       if (t.position.z - this.envDepth / 2 > this.camera.position.z + 4) {
-        t.position.z -= this.envDepth * this.envTiles.length;
+        t.position.z -= this.envWrapDist;
       }
     }
   }
@@ -609,12 +749,13 @@ export class Runner3D {
       ? this.productTextures[this.spawnCount % this.productTextures.length]
       : null;
     const card = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.1, 1.1),
+      new THREE.PlaneGeometry(1, 1),
       tex
         ? new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, alphaTest: 0.4 })
         : new THREE.MeshBasicMaterial({ color: this.cfg.brand.primaryColor, side: THREE.DoubleSide }),
     );
-    card.position.y = 1.15;
+    card.scale.setScalar(this.tune.product.size);
+    card.position.y = this.tune.product.y;
     grp.add(card);
     // glow ring on the ground
     const ring = new THREE.Mesh(
@@ -626,7 +767,7 @@ export class Runner3D {
     grp.add(ring);
     grp.position.set(lane * LANE_X, 0, z);
     this.scene.add(grp);
-    this.objects.push({ kind: "product", lane, z, mesh: grp, spin: card });
+    this.objects.push({ kind: "product", lane, z, mesh: grp, spin: card, card });
   }
 
   private spawnObstacle(lane: -1 | 0 | 1, kind: "low" | "high") {
@@ -665,25 +806,25 @@ export class Runner3D {
     const side = Math.random() < 0.5 ? -1 : 1;
     const tex = this.bannerTextures[this.spawnCount % this.bannerTextures.length];
     const grp = new THREE.Group();
-    const w = 5.2;
     const img = tex.image as { width?: number; height?: number } | undefined;
-    const h = w * ((img?.height || 1) / (img?.width || 2));
+    const aspect = (img?.height || 1) / (img?.width || 2);
     const panel = new THREE.Mesh(
-      new THREE.PlaneGeometry(w, h),
+      new THREE.PlaneGeometry(1, aspect),
       new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }),
     );
-    panel.position.y = h / 2 + 2.4;
+    panel.scale.setScalar(this.tune.banner.width);
+    panel.position.y = this.tune.banner.y;
     panel.rotation.y = side < 0 ? Math.PI / 2 : -Math.PI / 2;
     grp.add(panel);
     const post = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, panel.position.y, 0.2),
+      new THREE.BoxGeometry(0.2, this.tune.banner.y, 0.2),
       new THREE.MeshStandardMaterial({ color: 0x23262c }),
     );
-    post.position.y = panel.position.y / 2;
+    post.position.y = this.tune.banner.y / 2;
     grp.add(post);
     grp.position.set(side * 8.5, 0, SPAWN_Z);
     this.scene.add(grp);
-    this.objects.push({ kind: "banner", lane: 0, z: SPAWN_Z, mesh: grp });
+    this.objects.push({ kind: "banner", lane: 0, z: SPAWN_Z, mesh: grp, card: panel });
   }
 
   private spawnFinish() {

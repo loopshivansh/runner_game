@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DEFAULT_CONFIG, mergeConfig, type GameConfig } from "@/lib/config";
 import { Runner3D } from "@/game/engine3d";
+import DebugPanel from "./DebugPanel";
 import {
   EmailCapture,
   GameOver,
@@ -248,8 +249,15 @@ export default function GameShell() {
     ["--brand-ink" as string]: config.brand.inkColor,
   } as React.CSSProperties;
 
+  const debug =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).has("debug");
+
   return (
     <div className="stage-wrap">
+      {debug && engineReady && engineRef.current && (
+        <DebugPanel engine={engineRef.current} />
+      )}
       <div className="stage" style={stageStyle}>
         <canvas
           ref={canvasRef}
