@@ -22,6 +22,8 @@ const HIT_Z_FAR = 1.4;
 const JUMP_CLEAR_Y = 0.7;
 const JAKE_SWING_AXIS: "x" | "y" | "z" = "x"; // local axis that swings Jake's limbs
 const JAKE_ARM_DOWN = 0.6; // how far to pull Jake's arms down from the rest A-pose
+const JAKE_KNEE_BEND = 1.5; // knee bend amplitude
+const JAKE_KNEE_SIGN = 1; // flip to -1 if knees hyperextend forward
 
 type Kind = "product" | "low" | "high" | "banner" | "finish";
 
@@ -748,8 +750,11 @@ export class Runner3D {
       };
       swing(jr.lThigh, s * 0.85);
       swing(jr.rThigh, s2 * 0.85);
-      swing(jr.lShin, Math.max(0, -s) * 1.1);
-      swing(jr.rShin, Math.max(0, -s2) * 1.1);
+      // Knees: never fully locked, tuck hard during the leg's recovery swing.
+      const knee = (ph: number) =>
+        (0.18 + Math.max(0, Math.sin(ph + 1.3)) * JAKE_KNEE_BEND) * amp * JAKE_KNEE_SIGN;
+      swing(jr.lShin, knee(p));
+      swing(jr.rShin, knee(p + Math.PI));
       // Arms: pull down from the rest A-pose (mirrored on Z) then swing.
       const armPose = (bone: THREE.Bone | undefined, side: number, sw: number) => {
         if (!bone) return;
