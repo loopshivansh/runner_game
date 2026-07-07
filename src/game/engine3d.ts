@@ -70,14 +70,14 @@ export class Runner3D {
 
   /** Live-tunable scene parameters, driven by the ?debug tuning panel. */
   tune = {
-    env: { targetWidth: 24, sideX: 18, offX: 0, offY: 0, offZ: 0, rotDeg: 90, cityScale: 12, tileGap: 0 },
-    road: { width: 7 },
-    base: { x: 7, width: 10, height: 1 },
-    camera: { x: 0, y: 3.0, z: 6.4, lookX: 0, lookY: 1.1, lookZ: -6, fov: 58 },
+    env: { targetWidth: 66.5, sideX: 42, offX: 0, offY: 0, offZ: 0, rotDeg: 140, cityScale: 12.5, tileGap: -6.5 },
+    road: { width: 8 },
+    base: { x: 7.5, width: 10, height: 0.3 },
+    camera: { x: 0, y: 3.5, z: 5, lookX: 0, lookY: 1.3, lookZ: -6, fov: 60 },
     char: { scale: 1, offY: 0, offZ: 0 },
-    product: { size: 1.1, y: 1.15 },
-    banner: { width: 3.2, y: 2.6, x: 3.9, angle: 32 },
-    fog: { near: 40, far: 88 },
+    product: { size: 1.2, y: 0.85 },
+    banner: { width: 3.2, y: 2.6, x: 3.9, angle: 25 },
+    fog: { near: 30, far: 154 },
   };
   private character?: THREE.Object3D;
   private bones: Record<string, THREE.Bone> = {};
@@ -243,7 +243,8 @@ export class Runner3D {
       }
   }
   applyBanners() {
-    this.setupBanners();
+    if (!this.bannerBelt.length) this.setupBanners();
+    else for (const m of this.bannerBelt) this.layoutBanner(m);
   }
   rebuildEnv() {
     for (const t of this.envTiles) {
@@ -998,41 +999,54 @@ export class Runner3D {
   }
 
   private buildBanner(side: -1 | 1, tex: THREE.Texture): THREE.Group {
-    const b = this.tune.banner;
     const grp = new THREE.Group();
     const img = tex.image as { width?: number; height?: number } | undefined;
     const aspect = (img?.height || 1) / (img?.width || 2);
-    const w = b.width;
-    const h = w * aspect;
 
+    // Unit-sized parts so width / height / angle can be tuned live (no rebuild).
     const frame = new THREE.Mesh(
-      new THREE.BoxGeometry(w * 1.1, h * 1.15, 0.2),
+      new THREE.BoxGeometry(1, 1, 0.2),
       new THREE.MeshStandardMaterial({ color: 0x191b21, roughness: 0.9 }),
     );
-    frame.position.set(0, b.y, -0.12);
-    grp.add(frame);
-
     const panel = new THREE.Mesh(
-      new THREE.PlaneGeometry(w, h),
+      new THREE.PlaneGeometry(1, 1),
       new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }),
     );
+    const postL = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 1, 0.18),
+      new THREE.MeshStandardMaterial({ color: 0x2a2d33 }),
+    );
+    const postR = postL.clone();
+    grp.add(frame, panel, postL, postR);
+    grp.userData = { panel, frame, postL, postR, aspect, side };
+    this.layoutBanner(grp);
+    return grp;
+  }
+
+  /** Position/scale/rotate one banner from the current tune (in place). */
+  private layoutBanner(grp: THREE.Group) {
+    const b = this.tune.banner;
+    const { panel, frame, postL, postR, aspect, side } = grp.userData as {
+      panel: THREE.Mesh;
+      frame: THREE.Mesh;
+      postL: THREE.Mesh;
+      postR: THREE.Mesh;
+      aspect: number;
+      side: -1 | 1;
+    };
+    const w = b.width;
+    const h = w * aspect;
+    panel.scale.set(w, h, 1);
     panel.position.y = b.y;
-    grp.add(panel);
-
-    const legH = b.y - h / 2;
-    for (const px of [-w * 0.32, w * 0.32]) {
-      const post = new THREE.Mesh(
-        new THREE.BoxGeometry(0.18, legH, 0.18),
-        new THREE.MeshStandardMaterial({ color: 0x2a2d33 }),
-      );
-      post.position.set(px, legH / 2, 0);
-      grp.add(post);
-    }
-
-    // Angled along the building line (0 = facing player, 90 = fully parallel).
+    frame.scale.set(w * 1.1, h * 1.15, 1);
+    frame.position.set(0, b.y, -0.12);
+    const legH = Math.max(0.2, b.y - h / 2);
+    postL.scale.set(1, legH, 1);
+    postL.position.set(-w * 0.32, legH / 2, 0);
+    postR.scale.set(1, legH, 1);
+    postR.position.set(w * 0.32, legH / 2, 0);
     grp.rotation.y = (-side * b.angle * Math.PI) / 180;
     grp.position.x = side * b.x;
-    return grp;
   }
 
   private spawnFinish() {
