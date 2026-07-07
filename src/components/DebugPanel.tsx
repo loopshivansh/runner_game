@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Runner3D } from "@/game/engine3d";
 
 /**
@@ -37,6 +37,7 @@ const SCHEMA: Group[] = [
       { key: "offZ", min: -45, max: 45, step: 0.5 },
       { key: "rotDeg", min: 0, max: 360, step: 5 },
       { key: "cityScale", min: 4, max: 60, step: 0.5 },
+      { key: "tileGap", min: -20, max: 40, step: 0.5 },
     ],
   },
   {
@@ -79,6 +80,10 @@ export default function DebugPanel({ engine }: { engine: Runner3D }) {
   const [, force] = useState(0);
   const [open, setOpen] = useState(true);
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    (window as unknown as { __engine: Runner3D }).__engine = engine;
+  }, [engine]);
 
   if (!open) {
     return (

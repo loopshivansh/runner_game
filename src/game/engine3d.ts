@@ -20,6 +20,8 @@ const DESPAWN_Z = 9;
 const HIT_Z_NEAR = -0.9;
 const HIT_Z_FAR = 1.4;
 const JUMP_CLEAR_Y = 0.7;
+const JAKE_SWING_AXIS: "x" | "y" | "z" = "x"; // local axis that swings Jake's limbs
+const JAKE_ARM_DOWN = 0.6; // how far to pull Jake's arms down from the rest A-pose
 
 type Kind = "product" | "low" | "high" | "banner" | "finish";
 
@@ -57,10 +59,12 @@ export class Runner3D {
   private envSource: THREE.Object3D | null = null;
   private charRoot?: THREE.Object3D;
   private charBaseScale = 1;
+  private rigged = false;
+  private mixer?: THREE.AnimationMixer;
 
   /** Live-tunable scene parameters, driven by the ?debug tuning panel. */
   tune = {
-    env: { targetWidth: 24, sideX: 15, offX: 0, offY: 0, offZ: 0, rotDeg: 90, cityScale: 16 },
+    env: { targetWidth: 24, sideX: 18, offX: 0, offY: 0, offZ: 0, rotDeg: 90, cityScale: 16, tileGap: 9 },
     camera: { x: 0, y: 3.0, z: 6.4, lookX: 0, lookY: 1.1, lookZ: -6, fov: 58 },
     char: { scale: 1, offY: 0, offZ: 0 },
     product: { size: 1.1, y: 1.15 },
@@ -69,6 +73,15 @@ export class Runner3D {
   };
   private character?: THREE.Object3D;
   private bones: Record<string, THREE.Bone> = {};
+  private boneByName: Record<string, THREE.Bone> = {};
+  private jakeRig: {
+    lThigh?: THREE.Bone;
+    rThigh?: THREE.Bone;
+    lShin?: THREE.Bone;
+    rShin?: THREE.Bone;
+    lArm?: THREE.Bone;
+    rArm?: THREE.Bone;
+  } | null = null;
   private objects: WorldObj[] = [];
   private productTextures: THREE.Texture[] = [];
   private bannerTextures: THREE.Texture[] = [];
@@ -241,12 +254,12 @@ export class Runner3D {
       this.cb.onLoadProgress?.(Math.round((envFrac * 45 + charFrac * 45) + 0));
 
     const loadGLB = (url: string, onFrac: (f: number) => void) =>
-      new Promise<THREE.Group>((resolve, reject) => {
+      new Promise<{ scene: THREE.Group; animations: THREE.AnimationClip[] }>((resolve, reject) => {
         loader.load(
           url,
           (g) => {
             onFrac(1);
-            resolve(g.scene as unknown as THREE.Group);
+            resolve({ scene: g.scene as unknown as THREE.Group, animations: g.animations });
           },
           (e) => {
             if (e.total) onFrac(e.loaded / e.total);
@@ -259,24 +272,30 @@ export class Runner3D {
       this.cfg.game.environment === "subway"
         ? this.cfg.assets.subwayModelUrl
         : this.cfg.assets.environmentModelUrl;
+    const charUrl =
+      this.cfg.game.character === "default"
+        ? this.cfg.assets.characterModelUrl
+        : this.cfg.assets.jakeModelUrl;
 
     const [env, char] = await Promise.all([
       loadGLB(envUrl, (f) => {
         envFrac = f;
         report();
       }).catch(() => null),
-      loadGLB(this.cfg.assets.characterModelUrl, (f) => {
+      loadGLB(charUrl, (f) => {
         charFrac = f;
         report();
       }).catch(() => null),
     ]);
 
     if (env) {
-      this.envSource = env;
-      this.setupEnvironment(env);
+      this.envSource = env.scene;
+      this.setupEnvironment(env.scene);
     } else this.addFallbackGround();
-    if (char) this.setupCharacter(char);
-    else this.addFallbackCharacter();
+    if (char) {
+      this.setupCharacter(char.scene);
+      this.setupCharacterAnimation(char.animations);
+    } else this.addFallbackCharacter();
 
     await this.loadTextures();
     this.mode = "menu";
@@ -334,14 +353,15 @@ export class Runner3D {
 
     const depth = (size.x > size.z ? size.x : size.z) * scale;
     this.envDepth = depth > 4 ? depth : 60;
-    this.envWrapDist = this.envDepth * 3;
+    const spacing = this.envDepth - t.tileGap;
+    this.envWrapDist = spacing * 3;
 
     const tileA = makeTile(root.clone(true));
     const tileB = makeTile(root.clone(true));
     const tileC = makeTile(root.clone(true));
     tileA.position.z = t.offZ;
-    tileB.position.z = -this.envDepth + t.offZ;
-    tileC.position.z = -this.envDepth * 2 + t.offZ;
+    tileB.position.z = -spacing + t.offZ;
+    tileC.position.z = -spacing * 2 + t.offZ;
     this.envTiles = [tileA, tileB, tileC];
     this.envTiles.forEach((t2) => this.scene.add(t2));
   }
@@ -377,7 +397,8 @@ export class Runner3D {
     const pbCenter = new THREE.Vector3();
     pb.getCenter(pbCenter);
     this.envDepth = pbSize.z > 4 ? pbSize.z : 60;
-    this.envWrapDist = this.envDepth * TILES;
+    const spacing = this.envDepth - tune.tileGap;
+    this.envWrapDist = spacing * TILES;
 
     const makeTile = (side: 1 | -1, i: number) => {
       const obj = root.clone(true);
@@ -388,7 +409,7 @@ export class Runner3D {
       const c = new THREE.Vector3();
       b.getCenter(c);
       obj.position.x = -c.x + side * SIDE_X + tune.offX;
-      obj.position.z = -c.z - i * this.envDepth + tune.offZ;
+      obj.position.z = -c.z - i * spacing + tune.offZ;
       obj.position.y = -b.min.y + tune.offY;
       const g = new THREE.Group();
       g.add(obj);
@@ -428,19 +449,40 @@ export class Runner3D {
     this.character = wrap;
 
     // Collect bones by name prefix (names look like "LeftUpLeg_60").
+    this.bones = {};
+    this.boneByName = {};
+    this.jakeRig = null;
     root.traverse((o) => {
       const b = o as THREE.Bone;
       if (!b.isBone && b.type !== "Bone") return;
-      const name = b.name.replace(/_\d+$/, "");
-      this.bones[name] = b;
+      this.boneByName[b.name] = b;
+      this.bones[b.name.replace(/_\d+$/, "")] = b;
     });
 
-    // Face away from the camera (down the track, -Z).
-    const facing = this.detectFacing(root);
-    wrap.rotation.y = facing;
+    // RPM/Mixamo rig → animate by semantic bone name.
+    this.rigged = Boolean(this.bones["LeftUpLeg"] && this.bones["RightUpLeg"]);
 
-    // Base run pose: bring arms down to the sides and bent forward a touch.
-    this.applyBaseArmPose();
+    // Jake rig → generic bone names; limb bones identified by rest position.
+    const jb = this.boneByName;
+    if (jb["Bone_6_32"] && jb["Bone_13_36"]) {
+      this.jakeRig = {
+        lThigh: jb["Bone_13_36"],
+        rThigh: jb["Bone_6_32"],
+        lShin: jb["Bone_14_37"],
+        rShin: jb["Bone_7_33"],
+        lArm: jb["Bone_104_104"],
+        rArm: jb["Bone_128_90"],
+      };
+      this.rigged = true;
+      for (const bone of Object.values(this.jakeRig))
+        if (bone) bone.userData.rest = bone.rotation.clone();
+    }
+
+    // Face away from the camera (down the track, -Z).
+    wrap.rotation.y = this.detectFacing(root);
+
+    // Base run pose only applies to the RPM avatar.
+    if (this.rigged && !this.jakeRig) this.applyBaseArmPose();
   }
 
   private detectFacing(root: THREE.Object3D): number {
@@ -460,6 +502,15 @@ export class Runner3D {
     set("RightArm", 0, 0, -1.15);
     set("LeftForeArm", 0, 0, 0.4);
     set("RightForeArm", 0, 0, -0.4);
+  }
+
+  /** If the character GLB ships baked animation clips, play the run clip. */
+  private setupCharacterAnimation(clips: THREE.AnimationClip[]) {
+    if (!clips?.length || !this.charRoot) return;
+    const run = clips.find((c) => /run|sprint|jog|walk/i.test(c.name)) ?? clips[0];
+    this.mixer = new THREE.AnimationMixer(this.charRoot);
+    this.mixer.clipAction(run).play();
+    this.rigged = true; // the baked clip drives the limbs
   }
 
   private addFallbackCharacter() {
@@ -671,30 +722,91 @@ export class Runner3D {
     wrap.position.y = this.jumpY;
 
     const inner = wrap.children[0];
-    const swing = this.jumping ? 0.25 : this.sliding ? 0.1 : 1;
+    if (!inner) return;
+    const k = Math.min(1, dt * 12);
+    const p = this.runPhase;
 
-    // procedural run cycle on the legs / arms
-    const s = Math.sin(this.runPhase) * 0.9 * swing;
-    const s2 = Math.sin(this.runPhase + Math.PI) * 0.9 * swing;
-    this.setBone("LeftUpLeg", s);
-    this.setBone("RightUpLeg", s2);
-    this.setBone("LeftLeg", Math.max(0, -s) * 1.2);
-    this.setBone("RightLeg", Math.max(0, -s2) * 1.2);
-    // arms swing opposite legs (rotate on X while base pose holds them down)
-    if (this.bones["LeftArm"]) this.bones["LeftArm"].rotation.x = s2 * 0.6;
-    if (this.bones["RightArm"]) this.bones["RightArm"].rotation.x = s * 0.6;
+    // Baked animation clip (best case): let the mixer drive the limbs.
+    if (this.mixer) {
+      this.mixer.update(dt);
+      inner.scale.y += ((this.sliding ? 0.55 : 1) - inner.scale.y) * k;
+      return;
+    }
 
-    // body bob + slide/jump posture
-    if (inner) {
-      const bob = Math.abs(Math.sin(this.runPhase)) * 0.06 * swing;
+    // Jake rig: drive the identified leg/arm bones through a run cycle.
+    if (this.jakeRig) {
+      const jr = this.jakeRig;
+      const amp = this.jumping ? 0.25 : this.sliding ? 0.12 : 1;
+      const s = Math.sin(p) * amp;
+      const s2 = Math.sin(p + Math.PI) * amp;
+      const AX = JAKE_SWING_AXIS;
+      const swing = (bone: THREE.Bone | undefined, val: number) => {
+        if (!bone) return;
+        const rest = bone.userData.rest as THREE.Euler | undefined;
+        if (rest) bone.rotation.copy(rest);
+        bone.rotation[AX] += val;
+      };
+      swing(jr.lThigh, s * 0.85);
+      swing(jr.rThigh, s2 * 0.85);
+      swing(jr.lShin, Math.max(0, -s) * 1.1);
+      swing(jr.rShin, Math.max(0, -s2) * 1.1);
+      // Arms: pull down from the rest A-pose (mirrored on Z) then swing.
+      const armPose = (bone: THREE.Bone | undefined, side: number, sw: number) => {
+        if (!bone) return;
+        const rest = bone.userData.rest as THREE.Euler | undefined;
+        if (rest) bone.rotation.copy(rest);
+        bone.rotation.z += side * JAKE_ARM_DOWN;
+        bone.rotation[AX] += sw;
+      };
+      armPose(jr.lArm, 1, s2 * 0.4);
+      armPose(jr.rArm, -1, s * 0.4);
       if (this.sliding) {
-        inner.scale.y += (0.55 - inner.scale.y) * Math.min(1, dt * 12);
-        inner.rotation.x += (-0.5 - inner.rotation.x) * Math.min(1, dt * 12);
+        inner.scale.y += (0.55 - inner.scale.y) * k;
+        inner.rotation.x += (-0.5 - inner.rotation.x) * k;
       } else {
-        inner.scale.y += (1 - inner.scale.y) * Math.min(1, dt * 12);
-        inner.rotation.x += (0 - inner.rotation.x) * Math.min(1, dt * 12);
+        inner.scale.y += (1 - inner.scale.y) * k;
+        inner.rotation.x += (0 - inner.rotation.x) * k;
+        inner.position.y = Math.abs(Math.sin(p)) * 0.08 * amp;
+      }
+      return;
+    }
+
+    if (this.rigged) {
+      // Articulated skeleton: swing legs, knees and arms.
+      const swing = this.jumping ? 0.25 : this.sliding ? 0.1 : 1;
+      const s = Math.sin(p) * 0.9 * swing;
+      const s2 = Math.sin(p + Math.PI) * 0.9 * swing;
+      this.setBone("LeftUpLeg", s);
+      this.setBone("RightUpLeg", s2);
+      this.setBone("LeftLeg", Math.max(0, -s) * 1.2);
+      this.setBone("RightLeg", Math.max(0, -s2) * 1.2);
+      if (this.bones["LeftArm"]) this.bones["LeftArm"].rotation.x = s2 * 0.6;
+      if (this.bones["RightArm"]) this.bones["RightArm"].rotation.x = s * 0.6;
+      const bob = Math.abs(Math.sin(p)) * 0.06 * swing;
+      if (this.sliding) {
+        inner.scale.y += (0.55 - inner.scale.y) * k;
+        inner.rotation.x += (-0.5 - inner.rotation.x) * k;
+      } else {
+        inner.scale.y += (1 - inner.scale.y) * k;
+        inner.rotation.x += (0 - inner.rotation.x) * k;
         inner.position.y = bob;
       }
+      return;
+    }
+
+    // Rig-less single mesh (Jake): sell the run with a springy bounce,
+    // forward lean and a left/right sway so he reads as sprinting.
+    const energy = this.jumping ? 0.35 : 1;
+    if (this.sliding) {
+      inner.scale.y += (0.5 - inner.scale.y) * k;
+      inner.rotation.x += (-0.7 - inner.rotation.x) * k;
+      inner.rotation.z += (0 - inner.rotation.z) * k;
+      inner.position.y = 0;
+    } else {
+      inner.scale.y += (1 - inner.scale.y) * k;
+      inner.position.y = Math.abs(Math.sin(p)) * 0.16 * energy;
+      inner.rotation.x = 0.1 + Math.sin(p * 2) * 0.05 * energy;
+      inner.rotation.z = Math.sin(p) * 0.07 * energy;
     }
   }
 

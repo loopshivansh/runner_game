@@ -69,6 +69,8 @@ export interface GameConfig {
     obstacleEndsRun: boolean;
     /** Which 3D environment to use. */
     environment: "city" | "subway";
+    /** Which character to play as. */
+    character: "jake" | "default";
   };
 
   /** Asset URLs (Supabase Storage or any public URL). Empty => built-in art. */
@@ -77,8 +79,10 @@ export interface GameConfig {
     environmentModelUrl: string;
     /** Alternate 3D environment (GLB) — the "subway" theme. */
     subwayModelUrl: string;
-    /** 3D character model (GLB, rigged humanoid). */
+    /** 3D character model (GLB, rigged humanoid) — the "default" avatar. */
     characterModelUrl: string;
+    /** Alternate character — Jake (static mesh). */
+    jakeModelUrl: string;
     /** Product images used as collectibles (replace coins). */
     productUrls: string[];
     /** Playbook reward image shown on the win screen. */
@@ -152,11 +156,13 @@ export const DEFAULT_CONFIG: GameConfig = {
     spawnInterval: 1.15,
     obstacleEndsRun: true,
     environment: "subway",
+    character: "jake",
   },
   assets: {
     environmentModelUrl: "/models/environment.glb",
     subwayModelUrl: "/models/subway.glb",
     characterModelUrl: "/models/character.glb",
+    jakeModelUrl: "/models/jake.glb",
     productUrls: [
       "/assets/products/foursigmatic.png",
       "/assets/products/ketochow.png",

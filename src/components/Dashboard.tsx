@@ -408,6 +408,26 @@ function GameplayTab({ cfg, patch }: { cfg: GameConfig; patch: PatchFn }) {
             ))}
           </div>
         </FieldBox>
+        <FieldBox label="Character" hint="Which runner players control.">
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { key: "jake", label: "Jake" },
+              { key: "default", label: "Default" },
+            ] as const).map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => patch("game", { character: opt.key })}
+                className={`rounded-lg px-3 py-3 text-sm font-medium border transition ${
+                  g.character === opt.key
+                    ? "bg-white text-black border-white"
+                    : "bg-black/40 text-white/70 border-white/15 hover:border-white/40"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </FieldBox>
       </Section>
       <Section title="Rules">
         <Field label="Round duration (seconds)"><Num value={g.durationSeconds} onChange={(v) => patch("game", { durationSeconds: v })} /></Field>
