@@ -387,28 +387,8 @@ function GameplayTab({ cfg, patch }: { cfg: GameConfig; patch: PatchFn }) {
   const g = cfg.game;
   return (
     <>
-      <Section title="3D Environment">
-        <FieldBox label="World theme" hint="Switch the 3D scene players run through.">
-          <div className="grid grid-cols-2 gap-2">
-            {([
-              { key: "city", label: "City" },
-              { key: "subway", label: "Subway" },
-            ] as const).map((opt) => (
-              <button
-                key={opt.key}
-                onClick={() => patch("game", { environment: opt.key })}
-                className={`rounded-lg px-3 py-3 text-sm font-medium border transition ${
-                  g.environment === opt.key
-                    ? "bg-white text-black border-white"
-                    : "bg-black/40 text-white/70 border-white/15 hover:border-white/40"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </FieldBox>
-        <FieldBox label="Character" hint="Which runner players control.">
+      <Section title="Character">
+        <FieldBox label="Runner" hint="Which character players control.">
           <div className="grid grid-cols-2 gap-2">
             {([
               { key: "jake", label: "Jake" },

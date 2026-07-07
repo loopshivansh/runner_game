@@ -155,7 +155,7 @@ export const DEFAULT_CONFIG: GameConfig = {
     speedRamp: 1.9,
     spawnInterval: 1.15,
     obstacleEndsRun: true,
-    environment: "subway",
+    environment: "city",
     character: "jake",
   },
   assets: {

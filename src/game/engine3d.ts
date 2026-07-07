@@ -63,10 +63,12 @@ export class Runner3D {
   private charBaseScale = 1;
   private rigged = false;
   private mixer?: THREE.AnimationMixer;
+  private roadMesh?: THREE.Mesh;
 
   /** Live-tunable scene parameters, driven by the ?debug tuning panel. */
   tune = {
-    env: { targetWidth: 24, sideX: 18, offX: 0, offY: 0, offZ: 0, rotDeg: 90, cityScale: 16, tileGap: 9 },
+    env: { targetWidth: 24, sideX: 18, offX: 0, offY: 0, offZ: 0, rotDeg: 90, cityScale: 12, tileGap: 0 },
+    road: { width: 7 },
     camera: { x: 0, y: 3.0, z: 6.4, lookX: 0, lookY: 1.1, lookZ: -6, fov: 58 },
     char: { scale: 1, offY: 0, offZ: 0 },
     product: { size: 1.1, y: 1.15 },
@@ -149,14 +151,15 @@ export class Runner3D {
     dir.position.set(6, 14, 8);
     this.scene.add(dir);
 
-    // Always-present dark road under the play area so the runner is grounded
-    // even where an environment model has gaps (sits just below env ground).
+    // Our own road: a dark strip the runner travels on (city road is hidden).
     const road = new THREE.Mesh(
-      new THREE.PlaneGeometry(20, Math.abs(SPAWN_Z) + DESPAWN_Z + 40),
-      new THREE.MeshStandardMaterial({ color: 0x2b2e34, roughness: 1 }),
+      new THREE.PlaneGeometry(1, Math.abs(SPAWN_Z) + DESPAWN_Z + 40),
+      new THREE.MeshStandardMaterial({ color: 0x24262b, roughness: 1 }),
     );
     road.rotation.x = -Math.PI / 2;
-    road.position.set(0, -0.04, (SPAWN_Z + DESPAWN_Z) / 2);
+    road.position.set(0, -0.02, (SPAWN_Z + DESPAWN_Z) / 2);
+    road.scale.x = this.tune.road.width;
+    this.roadMesh = road;
     this.scene.add(road);
 
     this.addLaneGuides();
@@ -224,6 +227,9 @@ export class Runner3D {
     this.envTiles = [];
     if (this.envSource) this.setupEnvironment(this.envSource);
   }
+  applyRoad() {
+    if (this.roadMesh) this.roadMesh.scale.x = this.tune.road.width;
+  }
 
   /** Apply a tuning change by dotted path, e.g. setTune("camera.y", 3.2). */
   setTune(path: string, value: number) {
@@ -237,6 +243,7 @@ export class Runner3D {
     else if (group === "product") this.applyProducts();
     else if (group === "banner") this.applyBanners();
     else if (group === "env") this.rebuildEnv();
+    else if (group === "road") this.applyRoad();
   }
   getTune() {
     return this.tune;
@@ -270,10 +277,7 @@ export class Runner3D {
         );
       });
 
-    const envUrl =
-      this.cfg.game.environment === "subway"
-        ? this.cfg.assets.subwayModelUrl
-        : this.cfg.assets.environmentModelUrl;
+    const envUrl = this.cfg.assets.environmentModelUrl; // city only
     const charUrl =
       this.cfg.game.character === "default"
         ? this.cfg.assets.characterModelUrl
@@ -325,8 +329,14 @@ export class Runner3D {
   }
 
   private setupEnvironment(root: THREE.Object3D) {
-    if (this.cfg.game.environment === "subway") this.setupSubway(root);
-    else this.setupCity(root);
+    this.setupCity(root); // city only
+  }
+
+  /** Hide the city's own road/ground/coins so only the buildings remain. */
+  private hideCityRoad(obj: THREE.Object3D) {
+    obj.traverse((o) => {
+      if (o.name && /ground|track|coin/i.test(o.name)) o.visible = false;
+    });
   }
 
   private setupCity(root: THREE.Object3D) {
@@ -349,6 +359,7 @@ export class Runner3D {
       obj.position.z = -center.z * scale;
       obj.position.y = -box.min.y * scale + t.offY;
       if (size.x > size.z) obj.rotation.y = Math.PI / 2;
+      this.hideCityRoad(obj);
       g.add(obj);
       return g;
     };

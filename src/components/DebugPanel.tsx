@@ -66,6 +66,11 @@ const SCHEMA: Group[] = [
     ],
   },
   {
+    group: "road",
+    label: "Road",
+    ctrls: [{ key: "width", min: 2, max: 20, step: 0.5 }],
+  },
+  {
     group: "fog",
     label: "Fog",
     ctrls: [
