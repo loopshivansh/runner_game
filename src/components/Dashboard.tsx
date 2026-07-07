@@ -291,10 +291,12 @@ function Upload({ label, value, slot, onChange }: { label: string; value: string
   );
 }
 
-function MultiUpload({ label, values, slot, onChange }: { label: string; values: string[]; slot: string; onChange: (urls: string[]) => void }) {
+function MultiUpload({ label, values, slot, onChange, max, hint }: { label: string; values: string[]; slot: string; onChange: (urls: string[]) => void; max?: number; hint?: string }) {
   const ref = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const atMax = max !== undefined && values.length >= max;
   async function add(file: File) {
+    if (atMax) return;
     setBusy(true);
     const fd = new FormData();
     fd.append("file", file);
@@ -302,11 +304,14 @@ function MultiUpload({ label, values, slot, onChange }: { label: string; values:
     const res = await fetch("/api/upload", { method: "POST", body: fd });
     const j = await res.json();
     setBusy(false);
-    if (j.url) onChange([...values, j.url]);
+    if (j.url) onChange([...values, j.url].slice(0, max ?? Infinity));
     else alert(j.error || "Upload failed");
   }
   return (
-    <FieldBox label={label} hint="Add one or more images. Shown in rotation in-game.">
+    <FieldBox
+      label={max ? `${label} (${values.length}/${max})` : label}
+      hint={hint ?? "Add one or more images. Shown in rotation in-game."}
+    >
       <div className="flex flex-wrap gap-2">
         {values.map((v, i) => (
           <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-white/15 bg-black/40">
@@ -321,13 +326,15 @@ function MultiUpload({ label, values, slot, onChange }: { label: string; values:
           </div>
         ))}
         <input ref={ref} type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && add(e.target.files[0])} />
-        <button
-          onClick={() => ref.current?.click()}
-          disabled={busy}
-          className="w-16 h-16 rounded-lg border border-dashed border-white/25 text-white/40 hover:text-white hover:border-white/50 text-2xl"
-        >
-          {busy ? "…" : "+"}
-        </button>
+        {!atMax && (
+          <button
+            onClick={() => ref.current?.click()}
+            disabled={busy}
+            className="w-16 h-16 rounded-lg border border-dashed border-white/25 text-white/40 hover:text-white hover:border-white/50 text-2xl"
+          >
+            {busy ? "…" : "+"}
+          </button>
+        )}
       </div>
     </FieldBox>
   );
@@ -438,7 +445,15 @@ function AssetsTab({ cfg, patch }: { cfg: GameConfig; patch: PatchFn }) {
   return (
     <Section title="Game art (optional — leave empty for built-in art)">
       <Upload label="Runner character" value={a.characterUrl} slot="character" onChange={(v) => patch("assets", { characterUrl: v })} />
-      <Upload label="Collectible / coin" value={a.coinUrl} slot="coin" onChange={(v) => patch("assets", { coinUrl: v })} />
+      <MultiUpload
+        label="Collectibles"
+        values={a.productUrls}
+        slot="product"
+        max={5}
+        hint="The products players collect (up to 5). Same collection sound."
+        onChange={(v) => patch("assets", { productUrls: v })}
+      />
+      <Upload label="Coin (rare Loop pickup)" value={a.coinUrl} slot="coin" onChange={(v) => patch("assets", { coinUrl: v })} />
       <MultiUpload label="Obstacles" values={a.obstacleUrls} slot="obstacle" onChange={(v) => patch("assets", { obstacleUrls: v })} />
       <MultiUpload label="Billboards (customer/product ads)" values={a.billboardUrls} slot="billboard" onChange={(v) => patch("assets", { billboardUrls: v })} />
       <Upload label="Playbook / giveaway image" value={a.playbookImageUrl} slot="playbook" onChange={(v) => patch("assets", { playbookImageUrl: v })} />

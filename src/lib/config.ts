@@ -172,7 +172,7 @@ export const DEFAULT_CONFIG: GameConfig = {
     ],
     playbookImageUrl: "/assets/playbook.png",
     characterUrl: "",
-    coinUrl: "",
+    coinUrl: "/assets/coin.png",
     obstacleUrls: [],
     billboardUrls: [
       "/assets/banners/foursigmatic.png",

@@ -25,7 +25,8 @@ const JAKE_ARM_DOWN = 0.6; // how far to pull Jake's arms down from the rest A-p
 const JAKE_KNEE_BEND = 1.5; // knee bend amplitude
 const JAKE_KNEE_SIGN = 1; // flip to -1 if knees hyperextend forward
 
-type Kind = "product" | "low" | "high" | "banner" | "finish";
+type Kind = "product" | "coin" | "low" | "high" | "banner" | "finish";
+const COINS_PER_30S = 4; // rare Loop coin appears ~4× per 30s, randomly
 
 interface WorldObj {
   kind: Kind;
@@ -108,6 +109,8 @@ export class Runner3D {
   private objects: WorldObj[] = [];
   private productTextures: THREE.Texture[] = [];
   private bannerTextures: THREE.Texture[] = [];
+  private coinTexture: THREE.Texture | null = null;
+  private coinTimer = 3;
 
   private raf = 0;
   private running = false;
@@ -383,6 +386,7 @@ export class Runner3D {
     const banners = await Promise.all(this.cfg.assets.billboardUrls.map(load));
     this.productTextures = products.filter(Boolean) as THREE.Texture[];
     this.bannerTextures = banners.filter(Boolean) as THREE.Texture[];
+    this.coinTexture = this.cfg.assets.coinUrl ? await load(this.cfg.assets.coinUrl) : null;
   }
 
   private setupEnvironment(root: THREE.Object3D) {
@@ -685,6 +689,7 @@ export class Runner3D {
     this.timeLeft = this.cfg.game.durationSeconds;
     this.dist = 0;
     this.spawnTimer = 0;
+    this.coinTimer = (30 / COINS_PER_30S) * (0.4 + Math.random() * 0.8);
     this.bannerTimer = 3;
     this.spawnCount = 0;
     this.finishSpawned = false;
@@ -996,6 +1001,41 @@ export class Runner3D {
       this.spawnTimer = interval;
       this.spawnPattern();
     }
+    // Rare Loop coin: ~COINS_PER_30S per 30s at random intervals.
+    this.coinTimer -= dt;
+    if (this.coinTimer <= 0 && this.coinTexture) {
+      this.coinTimer = (30 / COINS_PER_30S) * (0.5 + Math.random());
+      const lanes: Array<-1 | 0 | 1> = [-1, 0, 1];
+      this.spawnCoin(lanes[Math.floor(Math.random() * 3)]);
+    }
+  }
+
+  private spawnCoin(lane: -1 | 0 | 1) {
+    if (!this.coinTexture) return;
+    const grp = new THREE.Group();
+    const size = 1.5;
+    const coin = new THREE.Mesh(
+      new THREE.PlaneGeometry(size, size),
+      new THREE.MeshBasicMaterial({
+        map: this.coinTexture,
+        transparent: true,
+        side: THREE.DoubleSide,
+        alphaTest: 0.3,
+      }),
+    );
+    coin.position.y = 1.3;
+    grp.add(coin);
+    // glowing ring so the premium coin stands out
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.85, 0.07, 10, 28),
+      new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.9 }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.06;
+    grp.add(ring);
+    grp.position.set(lane * LANE_X, 0, SPAWN_Z);
+    this.scene.add(grp);
+    this.objects.push({ kind: "coin", lane, z: SPAWN_Z, mesh: grp, spin: coin });
   }
 
   private spawnPattern() {
@@ -1244,6 +1284,14 @@ export class Runner3D {
       this.cb.onScore(this.score);
       this.cb.onCoin();
       this.audio.coin();
+      return;
+    }
+    if (o.kind === "coin") {
+      o.done = true;
+      this.score += this.cfg.game.coinValue * 5; // premium Loop coin bonus
+      this.cb.onScore(this.score);
+      this.cb.onCoin();
+      this.audio.ching();
       return;
     }
     if (o.kind === "low" && this.jumpY >= JUMP_CLEAR_Y) return;

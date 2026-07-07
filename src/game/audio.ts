@@ -35,6 +35,11 @@ export class AudioManager {
     this.tone(880, 0.09, "triangle");
     setTimeout(() => this.tone(1320, 0.08, "triangle"), 45);
   }
+  ching() {
+    // bright metallic coin "ching" — two quick ascending notes
+    this.tone(1568, 0.08, "square", 0.05);
+    setTimeout(() => this.tone(2093, 0.16, "square", 0.05), 55);
+  }
   jump() {
     this.tone(420, 0.12, "sine");
   }
