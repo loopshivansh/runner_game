@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DEFAULT_CONFIG, mergeConfig, type GameConfig } from "@/lib/config";
-import { RunnerGame } from "@/game/engine";
+import { Runner3D } from "@/game/engine3d";
 import {
   EmailCapture,
   GameOver,
@@ -26,17 +26,20 @@ type Screen =
 
 export default function GameShell() {
   const [config, setConfig] = useState<GameConfig>(DEFAULT_CONFIG);
+  const [configLoaded, setConfigLoaded] = useState(false);
+  const [engineReady, setEngineReady] = useState(false);
   const [screen, setScreen] = useState<Screen>("splash");
   const [prevScreen, setPrevScreen] = useState<Screen>("splash");
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(DEFAULT_CONFIG.game.durationSeconds);
+  const [loadProgress, setLoadProgress] = useState(0);
   const [soundOn, setSoundOn] = useState(true);
   const [tier, setTier] = useState<"gold" | "silver">("silver");
   const [submitting, setSubmitting] = useState(false);
   const [email, setEmail] = useState("");
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const engineRef = useRef<RunnerGame | null>(null);
+  const engineRef = useRef<Runner3D | null>(null);
   const configRef = useRef(config);
   configRef.current = config;
 
@@ -45,18 +48,14 @@ export default function GameShell() {
     fetch("/api/config")
       .then((r) => r.json())
       .then((data) => setConfig(mergeConfig(data)))
-      .catch(() => setConfig(DEFAULT_CONFIG));
+      .catch(() => setConfig(DEFAULT_CONFIG))
+      .finally(() => setConfigLoaded(true));
   }, []);
 
-  const inGame = screen === "tutorial" || screen === "playing" || screen === "paused";
-
-  /* ---- create engine when entering the game (tutorial) ---- */
-  const buildEngine = useCallback(() => {
-    if (!canvasRef.current) return;
-    engineRef.current?.destroy();
-    setScore(0);
-    setTimeLeft(configRef.current.game.durationSeconds);
-    const engine = new RunnerGame({
+  /* ---- build + preload the 3D engine once config is known ---- */
+  useEffect(() => {
+    if (!configLoaded || !canvasRef.current || engineRef.current) return;
+    const engine = new Runner3D({
       canvas: canvasRef.current,
       config: configRef.current,
       soundEnabled: soundOn,
@@ -65,37 +64,42 @@ export default function GameShell() {
         onTimer: setTimeLeft,
         onCoin: () => {},
         onHit: () => {},
+        onLoadProgress: setLoadProgress,
         onEnd: ({ score, timeUp }) => {
           const won = timeUp && score >= configRef.current.game.goldScore;
-          const badge: "gold" | "silver" = won ? "gold" : "silver";
-          setTier(badge);
+          setTier(won ? "gold" : "silver");
           setScreen("over");
-          void recordResult(score, badge, timeUp);
+          void recordResult(score, won ? "gold" : "silver", timeUp);
         },
       },
     });
     engineRef.current = engine;
-    engine.resize();
-    engine.attachResize();
     void engine.load().then(() => {
-      engine.start();
-      engine.pause(); // frozen scene under the tutorial overlay
+      engine.resize();
+      engine.attachResize();
+      engine.startMenu();
+      setEngineReady(true);
     });
-  }, [soundOn]);
-
-  useEffect(() => {
-    if (screen === "tutorial") buildEngine();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen]);
+  }, [configLoaded]);
 
   useEffect(() => () => engineRef.current?.destroy(), []);
+
+  const showCanvas = engineReady && screen !== "over";
+  useEffect(() => {
+    if (showCanvas) engineRef.current?.resize();
+  }, [showCanvas]);
+
+  // If the player reached the loading screen before assets were ready, advance.
+  useEffect(() => {
+    if (screen === "loading" && engineReady) setScreen("tutorial");
+  }, [screen, engineReady]);
 
   /* ---- input while playing ---- */
   useEffect(() => {
     if (screen !== "playing") return;
     const eng = engineRef.current;
     if (!eng) return;
-
     let sx = 0,
       sy = 0,
       moved = false;
@@ -108,7 +112,7 @@ export default function GameShell() {
       if (moved) return;
       const dx = e.touches[0].clientX - sx;
       const dy = e.touches[0].clientY - sy;
-      if (Math.abs(dx) < 28 && Math.abs(dy) < 28) return;
+      if (Math.abs(dx) < 26 && Math.abs(dy) < 26) return;
       moved = true;
       if (Math.abs(dx) > Math.abs(dy)) dx > 0 ? eng.moveRight() : eng.moveLeft();
       else dy > 0 ? eng.slide() : eng.jump();
@@ -164,7 +168,6 @@ export default function GameShell() {
       /* non-blocking */
     }
   }
-
   async function recordResult(finalScore: number, badge: string, timeUp: boolean) {
     if (!config.leadCapture.enabled || !email) return;
     try {
@@ -179,18 +182,22 @@ export default function GameShell() {
   }
 
   /* ---- transitions ---- */
+  function startPlayFlow() {
+    if (engineReady) setScreen("tutorial");
+    else setScreen("loading");
+  }
   function goPlay() {
     if (config.leadCapture.enabled) setScreen("email");
-    else setScreen("loading");
+    else startPlayFlow();
   }
   async function onEmailStart(value: string) {
     setSubmitting(true);
     await captureEmail(value);
     setSubmitting(false);
-    setScreen("loading");
+    startPlayFlow();
   }
   function startRun() {
-    engineRef.current?.resume();
+    engineRef.current?.beginGame();
     setScreen("playing");
   }
   function pause() {
@@ -208,13 +215,11 @@ export default function GameShell() {
     });
   }
   function playAgain() {
-    engineRef.current?.destroy();
-    engineRef.current = null;
-    setScreen("loading");
+    engineRef.current?.beginGame();
+    setScreen("playing");
   }
   function goHome() {
-    engineRef.current?.destroy();
-    engineRef.current = null;
+    engineRef.current?.backToMenu();
     setScreen("splash");
   }
   function openInfo() {
@@ -232,10 +237,7 @@ export default function GameShell() {
     if (navigator.share) {
       navigator.share({ title: config.brand.name, text, url }).catch(() => {});
     } else {
-      window.open(
-        `https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`,
-        "_blank",
-      );
+      window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, "_blank");
     }
   }
 
@@ -249,25 +251,18 @@ export default function GameShell() {
   return (
     <div className="stage-wrap">
       <div className="stage" style={stageStyle}>
-        {/* Canvas is always mounted so the engine has a stable target. */}
         <canvas
           ref={canvasRef}
           className="absolute inset-0 w-full h-full"
-          style={{ display: inGame ? "block" : "none" }}
+          style={{ display: showCanvas ? "block" : "none" }}
         />
 
-        {screen === "splash" && (
-          <Splash config={config} onPlay={goPlay} onInfo={openInfo} />
-        )}
-        {screen === "info" && (
-          <InfoOverlay config={config} onClose={closeInfo} />
-        )}
+        {screen === "splash" && <Splash config={config} onPlay={goPlay} onInfo={openInfo} />}
+        {screen === "info" && <InfoOverlay config={config} onClose={closeInfo} />}
         {screen === "email" && (
           <EmailCapture config={config} onStart={onEmailStart} submitting={submitting} />
         )}
-        {screen === "loading" && (
-          <Loading config={config} onDone={() => setScreen("tutorial")} />
-        )}
+        {screen === "loading" && <Loading config={config} progress={loadProgress} />}
         {screen === "tutorial" && <Tutorial config={config} onStart={startRun} />}
 
         {(screen === "playing" || screen === "paused") && (

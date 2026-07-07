@@ -1,16 +1,21 @@
 import type { Metadata, Viewport } from "next";
-import { Fredoka, Inter } from "next/font/google";
+import { Inter, Poppins } from "next/font/google";
 import "./globals.css";
 
-const fredoka = Fredoka({
+// Premium display face — geometric, confident, matches the Figma headings.
+const poppins = Poppins({
   variable: "--font-display",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["500", "600", "700"],
+  display: "swap",
 });
 
+// Clean, highly legible body face.
 const inter = Inter({
   variable: "--font-body",
   subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -35,7 +40,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${fredoka.variable} ${inter.variable}`}>
+    <html lang="en" className={`${poppins.variable} ${inter.variable}`}>
       <body>{children}</body>
     </html>
   );

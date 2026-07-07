@@ -10,10 +10,18 @@
   --brand-gold: #e9b44c;
   --brand-silver: #c7ccd1;
   --brand-ink: #0e0e10;
+
+  /* Premium neutral ramp for dark surfaces. */
+  --ink-900: #0a0a0c;
+  --ink-800: #141418;
+  --ink-700: #1c1c22;
+  --ink-600: #26262e;
+  --hairline: rgba(255, 255, 255, 0.08);
 }
 
 * {
   -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
 }
 
 html,
@@ -27,10 +35,13 @@ body {
   background: #050507;
   color: #fff;
   overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .font-display {
   font-family: var(--font-display), system-ui, sans-serif;
+  letter-spacing: -0.01em;
 }
 
 /* The device stage: full-height on mobile, framed on desktop. */
@@ -39,7 +50,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(120% 90% at 50% 0%, #1a1526 0%, #050507 60%);
+  background: radial-gradient(120% 90% at 50% 0%, #17122a 0%, #050507 62%);
 }
 
 .stage {
@@ -48,7 +59,7 @@ body {
   max-width: 480px;
   height: 100dvh;
   overflow: hidden;
-  background: #0e0e10;
+  background: #0a0a0c;
   user-select: none;
   touch-action: none;
 }
@@ -56,10 +67,11 @@ body {
 @media (min-width: 640px) {
   .stage {
     height: min(880px, 94dvh);
-    border-radius: 32px;
+    border-radius: 34px;
     box-shadow:
-      0 0 0 10px #17171b,
-      0 30px 80px -20px rgba(0, 0, 0, 0.8);
+      0 0 0 1px rgba(255, 255, 255, 0.06),
+      0 0 0 10px #111114,
+      0 40px 100px -24px rgba(0, 0, 0, 0.85);
   }
 }
 
@@ -71,8 +83,11 @@ body {
   z-index: 10;
 }
 
-/* Pill button used throughout the flow. */
+/* ------------------------------------------------------------------ */
+/* Pill buttons — sleek dark, subtle depth, matching the Figma.        */
+/* ------------------------------------------------------------------ */
 .pill {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -80,56 +95,134 @@ body {
   border-radius: 999px;
   font-family: var(--font-display), system-ui, sans-serif;
   font-weight: 600;
+  letter-spacing: -0.01em;
   cursor: pointer;
   border: none;
+  isolation: isolate;
   transition:
-    transform 0.12s ease,
-    filter 0.12s ease,
-    background 0.12s ease;
+    transform 0.14s ease,
+    box-shadow 0.2s ease,
+    filter 0.16s ease,
+    background 0.16s ease;
   white-space: nowrap;
 }
 .pill:active {
-  transform: scale(0.97);
+  transform: scale(0.975);
 }
-.pill-primary {
-  background: #16161a;
-  color: #fff;
-  box-shadow: 0 6px 20px -6px rgba(0, 0, 0, 0.6);
-}
-.pill-primary:hover {
-  filter: brightness(1.15);
-}
-.pill-ghost {
-  background: rgba(30, 30, 34, 0.72);
-  color: #eee;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-}
-.pill-light {
-  background: #fff;
-  color: #16161a;
+.pill:disabled {
+  opacity: 0.6;
+  pointer-events: none;
 }
 
+/* Primary — the deep dark hero pill (Play Game / Start Game). */
+.pill-primary {
+  background: linear-gradient(180deg, #24242b 0%, #101014 100%);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 12px 28px -10px rgba(0, 0, 0, 0.7),
+    0 2px 6px -2px rgba(0, 0, 0, 0.5);
+}
+.pill-primary:hover {
+  filter: brightness(1.12);
+}
+
+/* Ghost — recessed dark chip on dark surfaces. */
+.pill-ghost {
+  background: rgba(28, 28, 34, 0.85);
+  color: #f2f2f4;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+}
+.pill-ghost:hover {
+  background: rgba(38, 38, 46, 0.9);
+}
+
+/* Light — white pill (used sparingly on dark panels). */
+.pill-light {
+  background: #fff;
+  color: #101014;
+  box-shadow:
+    inset 0 -1px 0 rgba(0, 0, 0, 0.08),
+    0 10px 24px -12px rgba(0, 0, 0, 0.5);
+}
+.pill-light:hover {
+  filter: brightness(0.97);
+}
+
+/* Accent — brand-purple filled pill for primary rewards. */
+.pill-accent {
+  background: linear-gradient(180deg, #9a52ff 0%, #7c2df0 100%);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 12px 30px -10px rgba(124, 45, 240, 0.6);
+}
+
+/* HUD chips — light glassy pills over the 3D scene. */
 .hud-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: #fff;
-  color: #16161a;
+  gap: 7px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #141418;
   font-family: var(--font-display), system-ui, sans-serif;
   font-weight: 600;
+  letter-spacing: -0.01em;
   border-radius: 999px;
-  padding: 8px 14px;
+  padding: 9px 15px;
   font-size: 15px;
-  box-shadow: 0 4px 14px -4px rgba(0, 0, 0, 0.4);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.04),
+    0 6px 18px -6px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+}
+.hud-pill:active {
+  transform: scale(0.96);
 }
 
+/* Sheet — bottom drawer surface (info, email). */
+.sheet {
+  background: linear-gradient(180deg, #1c1c22 0%, #0d0d10 100%);
+  border-top: 1px solid var(--hairline);
+  box-shadow: 0 -20px 50px -20px rgba(0, 0, 0, 0.7);
+}
+
+/* Eyebrow / label micro-type. */
+.eyebrow {
+  font-family: var(--font-body), system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ */
+/* Motion                                                              */
+/* ------------------------------------------------------------------ */
 .fade-in {
-  animation: fadeIn 0.35s ease both;
+  animation: fadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-up {
+  animation: slideUp 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
   }
   to {
     opacity: 1;
@@ -138,12 +231,12 @@ body {
 }
 
 .pop {
-  animation: pop 0.4s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  animation: pop 0.5s cubic-bezier(0.2, 1.3, 0.4, 1) both;
 }
 @keyframes pop {
   from {
     opacity: 0;
-    transform: scale(0.8);
+    transform: scale(0.86);
   }
   to {
     opacity: 1;
@@ -157,5 +250,60 @@ body {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+.float-y {
+  animation: floatY 3.2s ease-in-out infinite;
+}
+@keyframes floatY {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.pulse-arrow {
+  animation: pulseArrow 1.6s ease-in-out infinite;
+}
+@keyframes pulseArrow {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-4px);
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 20%,
+    rgba(255, 255, 255, 0.55) 50%,
+    rgba(255, 255, 255, 0) 80%
+  );
+  background-size: 220% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+@keyframes shimmer {
+  from {
+    background-position: 180% 0;
+  }
+  to {
+    background-position: -80% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .float-y,
+  .pulse-arrow,
+  .shimmer {
+    animation: none;
   }
 }

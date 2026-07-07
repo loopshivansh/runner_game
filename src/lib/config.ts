@@ -67,13 +67,26 @@ export interface GameConfig {
     spawnInterval: number;
     /** If true, hitting an obstacle ends the run; else costs time. */
     obstacleEndsRun: boolean;
+    /** Which 3D environment to use. */
+    environment: "city" | "subway";
   };
 
   /** Asset URLs (Supabase Storage or any public URL). Empty => built-in art. */
   assets: {
+    /** 3D environment model (GLB) — the "city" theme. */
+    environmentModelUrl: string;
+    /** Alternate 3D environment (GLB) — the "subway" theme. */
+    subwayModelUrl: string;
+    /** 3D character model (GLB, rigged humanoid). */
+    characterModelUrl: string;
+    /** Product images used as collectibles (replace coins). */
+    productUrls: string[];
+    /** Playbook reward image shown on the win screen. */
+    playbookImageUrl: string;
     characterUrl: string;
     coinUrl: string;
     obstacleUrls: string[];
+    /** Billboard / banner ad images placed along the track. */
     billboardUrls: string[];
     badgeGoldUrl: string;
     badgeSilverUrl: string;
@@ -103,7 +116,7 @@ export const DEFAULT_CONFIG: GameConfig = {
     goldColor: "#E9B44C",
     silverColor: "#C7CCD1",
     inkColor: "#0E0E10",
-    logoUrl: "",
+    logoUrl: "/assets/loop-logo.png",
   },
   copy: {
     splashTitle: "The Last Subscription Platform You'll Ever Need.",
@@ -138,12 +151,27 @@ export const DEFAULT_CONFIG: GameConfig = {
     speedRamp: 1.9,
     spawnInterval: 1.15,
     obstacleEndsRun: true,
+    environment: "city",
   },
   assets: {
+    environmentModelUrl: "/models/environment.glb",
+    subwayModelUrl: "/models/subway.glb",
+    characterModelUrl: "/models/character.glb",
+    productUrls: [
+      "/assets/products/foursigmatic.png",
+      "/assets/products/ketochow.png",
+      "/assets/products/lilac.png",
+      "/assets/products/nutripaw.png",
+      "/assets/products/primalqueen.png",
+    ],
+    playbookImageUrl: "/assets/playbook.png",
     characterUrl: "",
     coinUrl: "",
     obstacleUrls: [],
-    billboardUrls: [],
+    billboardUrls: [
+      "/assets/banners/foursigmatic.png",
+      "/assets/banners/primalqueen.png",
+    ],
     badgeGoldUrl: "",
     badgeSilverUrl: "",
   },
@@ -174,6 +202,9 @@ export function mergeConfig(partial: unknown): GameConfig {
       billboardUrls:
         (p.assets?.billboardUrls as string[] | undefined) ??
         DEFAULT_CONFIG.assets.billboardUrls,
+      productUrls:
+        (p.assets?.productUrls as string[] | undefined) ??
+        DEFAULT_CONFIG.assets.productUrls,
     },
     links: { ...DEFAULT_CONFIG.links, ...(p.links ?? {}) },
     leadCapture: { ...DEFAULT_CONFIG.leadCapture, ...(p.leadCapture ?? {}) },

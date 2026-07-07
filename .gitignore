@@ -40,3 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .gstack/
+
+# source assets (optimized versions ship from public/); keep repo lean
+/uploads/
+/*.glb
+.claude/launch.json
