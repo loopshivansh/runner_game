@@ -71,6 +71,15 @@ const SCHEMA: Group[] = [
     ctrls: [{ key: "width", min: 2, max: 20, step: 0.5 }],
   },
   {
+    group: "base",
+    label: "Brown base",
+    ctrls: [
+      { key: "x", min: 2, max: 20, step: 0.5 },
+      { key: "width", min: 1, max: 24, step: 0.5 },
+      { key: "height", min: 0, max: 6, step: 0.1 },
+    ],
+  },
+  {
     group: "fog",
     label: "Fog",
     ctrls: [

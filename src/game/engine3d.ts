@@ -64,11 +64,13 @@ export class Runner3D {
   private rigged = false;
   private mixer?: THREE.AnimationMixer;
   private roadMesh?: THREE.Mesh;
+  private baseMeshes: THREE.Mesh[] = [];
 
   /** Live-tunable scene parameters, driven by the ?debug tuning panel. */
   tune = {
     env: { targetWidth: 24, sideX: 18, offX: 0, offY: 0, offZ: 0, rotDeg: 90, cityScale: 12, tileGap: 0 },
     road: { width: 7 },
+    base: { x: 7, width: 10, height: 1 },
     camera: { x: 0, y: 3.0, z: 6.4, lookX: 0, lookY: 1.1, lookZ: -6, fov: 58 },
     char: { scale: 1, offY: 0, offZ: 0 },
     product: { size: 1.1, y: 1.15 },
@@ -138,9 +140,9 @@ export class Runner3D {
     r.toneMappingExposure = 1.05;
     this.renderer = r;
 
-    const sky = new THREE.Color("#aecbe6");
-    this.scene.background = sky;
-    this.scene.fog = new THREE.Fog(sky, this.tune.fog.near, this.tune.fog.far);
+    // White fog + a bright near-white sky so the horizon blends into the haze.
+    this.scene.background = new THREE.Color("#eef1f4");
+    this.scene.fog = new THREE.Fog(0xffffff, this.tune.fog.near, this.tune.fog.far);
 
     this.camera = new THREE.PerspectiveCamera(this.tune.camera.fov, 1, 0.1, 200);
     this.applyCamera();
@@ -161,6 +163,18 @@ export class Runner3D {
     road.scale.x = this.tune.road.width;
     this.roadMesh = road;
     this.scene.add(road);
+
+    // Brown base platform running under the buildings on each side.
+    const baseLen = Math.abs(SPAWN_Z) + DESPAWN_Z + 60;
+    const baseMat = new THREE.MeshStandardMaterial({ color: 0x4a3421, roughness: 1 });
+    this.baseMeshes = [];
+    for (const side of [-1, 1] as const) {
+      const base = new THREE.Mesh(new THREE.BoxGeometry(1, 1, baseLen), baseMat);
+      base.position.z = (SPAWN_Z + DESPAWN_Z) / 2;
+      this.scene.add(base);
+      this.baseMeshes.push(base);
+    }
+    this.applyBase();
 
     this.addLaneGuides();
     this.resize();
@@ -230,6 +244,15 @@ export class Runner3D {
   applyRoad() {
     if (this.roadMesh) this.roadMesh.scale.x = this.tune.road.width;
   }
+  applyBase() {
+    const b = this.tune.base;
+    this.baseMeshes.forEach((mesh, i) => {
+      const side = i === 0 ? -1 : 1;
+      mesh.position.x = side * b.x;
+      mesh.position.y = b.height / 2 - 0.05;
+      mesh.scale.set(b.width, b.height, 1);
+    });
+  }
 
   /** Apply a tuning change by dotted path, e.g. setTune("camera.y", 3.2). */
   setTune(path: string, value: number) {
@@ -244,6 +267,7 @@ export class Runner3D {
     else if (group === "banner") this.applyBanners();
     else if (group === "env") this.rebuildEnv();
     else if (group === "road") this.applyRoad();
+    else if (group === "base") this.applyBase();
   }
   getTune() {
     return this.tune;
@@ -332,10 +356,12 @@ export class Runner3D {
     this.setupCity(root); // city only
   }
 
-  /** Hide the city's own road/ground/coins so only the buildings remain. */
+  /** Hide the city's road/ground/coins AND the metal side rails so only the
+   *  buildings remain (we add our own road + brown base). */
   private hideCityRoad(obj: THREE.Object3D) {
     obj.traverse((o) => {
-      if (o.name && /ground|track|coin/i.test(o.name)) o.visible = false;
+      if (o.name && /ground|track|coin|metal|grill|step|wall|rail/i.test(o.name))
+        o.visible = false;
     });
   }
 
