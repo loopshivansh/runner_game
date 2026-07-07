@@ -232,6 +232,14 @@ export default function GameShell() {
     if (prevScreen === "playing") engineRef.current?.resume();
     setScreen(prevScreen);
   }
+  function infoPlay() {
+    if (prevScreen === "playing") {
+      engineRef.current?.resume();
+      setScreen("playing");
+    } else {
+      goPlay();
+    }
+  }
   function share() {
     const url = config.links.offerUrl;
     const text = config.links.shareText;
@@ -266,7 +274,9 @@ export default function GameShell() {
         />
 
         {screen === "splash" && <Splash config={config} onPlay={goPlay} onInfo={openInfo} />}
-        {screen === "info" && <InfoOverlay config={config} onClose={closeInfo} />}
+        {screen === "info" && (
+          <InfoOverlay config={config} onClose={closeInfo} onPlay={infoPlay} />
+        )}
         {screen === "email" && (
           <EmailCapture config={config} onStart={onEmailStart} submitting={submitting} />
         )}

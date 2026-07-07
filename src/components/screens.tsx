@@ -56,9 +56,6 @@ export function Splash({
         <div className="flex-1" />
 
         <div className="px-5 pb-9 flex flex-col gap-3 slide-up">
-          <PillButton onClick={onPlay} icon={<PlayIcon />} className="w-full">
-            {config.copy.playButton}
-          </PillButton>
           <PillButton
             variant="ghost"
             onClick={onInfo}
@@ -66,6 +63,9 @@ export function Splash({
             style={{ fontSize: 14, padding: "13px 20px", fontWeight: 500 }}
           >
             {config.copy.playbookLinkLabel}
+          </PillButton>
+          <PillButton onClick={onPlay} icon={<PlayIcon />} className="w-full">
+            {config.copy.playButton}
           </PillButton>
         </div>
       </div>
@@ -77,9 +77,11 @@ export function Splash({
 export function InfoOverlay({
   config,
   onClose,
+  onPlay,
 }: {
   config: GameConfig;
   onClose: () => void;
+  onPlay: () => void;
 }) {
   return (
     <div className="overlay bg-black/65 justify-end fade-in">
@@ -122,8 +124,8 @@ export function InfoOverlay({
             text={config.copy.infoStep2}
           />
         </ol>
-        <PillButton onClick={onClose} className="w-full">
-          Got It
+        <PillButton onClick={onPlay} icon={<PlayIcon />} className="w-full">
+          {config.copy.playButton}
         </PillButton>
       </div>
     </div>
