@@ -49,6 +49,8 @@ const SCHEMA: Group[] = [
       { key: "scale", min: 0.3, max: 3, step: 0.05 },
       { key: "offY", min: -2, max: 5, step: 0.05 },
       { key: "offZ", min: -8, max: 8, step: 0.1 },
+      { key: "lean", min: -1.2, max: 1.2, step: 0.05 },
+      { key: "armBack", min: -2, max: 2, step: 0.05 },
     ],
   },
   {

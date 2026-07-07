@@ -78,7 +78,7 @@ export class Runner3D {
     road: { width: 13 },
     base: { x: 7.5, width: 9, height: 0.3 },
     camera: { x: 0, y: 3.5, z: 5, lookX: 0, lookY: 1.3, lookZ: -6, fov: 60 },
-    char: { scale: 1, offY: 0, offZ: 0 },
+    char: { scale: 1, offY: 0, offZ: 0, lean: 0.55, armBack: 1.3 },
     product: { size: 1.2, y: 0.85 },
     banner: { width: 4.6, y: 2.3, x: 4, angle: 60, gapMin: 3, gapMax: 40 },
     fog: { near: 30, far: 154 },
@@ -93,6 +93,17 @@ export class Runner3D {
     rShin?: THREE.Bone;
     lArm?: THREE.Bone;
     rArm?: THREE.Bone;
+  } | null = null;
+  private jakeGlide: {
+    lArm?: THREE.Bone;
+    rArm?: THREE.Bone;
+    lElbow?: THREE.Bone;
+    rElbow?: THREE.Bone;
+    lLeg?: THREE.Bone;
+    rLeg?: THREE.Bone;
+    lKnee?: THREE.Bone;
+    rKnee?: THREE.Bone;
+    torso?: THREE.Bone;
   } | null = null;
   private objects: WorldObj[] = [];
   private productTextures: THREE.Texture[] = [];
@@ -326,7 +337,7 @@ export class Runner3D {
     const charUrl =
       this.cfg.game.character === "default"
         ? this.cfg.assets.characterModelUrl
-        : this.cfg.assets.jakeModelUrl;
+        : this.cfg.assets.boyModelUrl;
 
     const [env, char] = await Promise.all([
       loadGLB(envUrl, (f) => {
@@ -532,8 +543,12 @@ export class Runner3D {
     root.position.y = -box2.min.y + this.tune.char.offY;
     root.position.z = this.tune.char.offZ;
 
+    // Pose group sits between the wrap and the scaled model so squash / lean
+    // (scale.y, rotation.x) never corrupt the model's own scale.
+    const poseGroup = new THREE.Group();
+    poseGroup.add(root);
     const wrap = new THREE.Group();
-    wrap.add(root);
+    wrap.add(poseGroup);
     this.scene.add(wrap);
     this.character = wrap;
 
@@ -541,6 +556,7 @@ export class Runner3D {
     this.bones = {};
     this.boneByName = {};
     this.jakeRig = null;
+    this.jakeGlide = null;
     root.traverse((o) => {
       const b = o as THREE.Bone;
       if (!b.isBone && b.type !== "Bone") return;
@@ -567,11 +583,44 @@ export class Runner3D {
         if (bone) bone.userData.rest = bone.rotation.clone();
     }
 
+    // New Jake rig (clean semantic names) → gliding-at-speed pose.
+    if (jb["Hips_jake_convert_arm"]) {
+      const g = (n: string) => jb[`${n}_jake_convert_arm`];
+      this.jakeGlide = {
+        lArm: g("Left_Arm"),
+        rArm: g("Right_Arm"),
+        lElbow: g("Left_Elbow"),
+        rElbow: g("Right_Elbow"),
+        lLeg: g("Left_Leg"),
+        rLeg: g("Right_Leg"),
+        lKnee: g("Left_Knee"),
+        rKnee: g("Right_Knee"),
+        torso: g("Torso_1"),
+      };
+      this.rigged = true;
+      for (const bone of Object.values(this.jakeGlide))
+        if (bone) bone.userData.rest = bone.rotation.clone();
+    }
+
     // Face away from the camera (down the track, -Z).
     wrap.rotation.y = this.detectFacing(root);
 
-    // Base run pose only applies to the RPM avatar.
-    if (this.rigged && !this.jakeRig) this.applyBaseArmPose();
+    // Bring the arms down from the bind pose (the two rigs need opposite Z).
+    if (this.rigged && !this.jakeRig && !this.jakeGlide) {
+      if (jb["Hips_01"]) this.applyBoyArmPose();
+      else this.applyBaseArmPose();
+    }
+  }
+
+  private applyBoyArmPose() {
+    const set = (n: string, z: number) => {
+      const b = this.bones[n];
+      if (b) b.rotation.set(0, 0, z);
+    };
+    set("LeftArm", -1.2);
+    set("RightArm", 1.2);
+    set("LeftForeArm", -0.3);
+    set("RightForeArm", 0.3);
   }
 
   private detectFacing(root: THREE.Object3D): number {
@@ -821,6 +870,33 @@ export class Runner3D {
     if (this.mixer) {
       this.mixer.update(dt);
       inner.scale.y += ((this.sliding ? 0.55 : 1) - inner.scale.y) * k;
+      return;
+    }
+
+    // New Jake: a gliding-at-speed pose — lean forward, arms swept back.
+    if (this.jakeGlide) {
+      const jg = this.jakeGlide;
+      const c = this.tune.char;
+      const flutter = Math.sin(p * 3) * 0.05;
+      const setRot = (bone: THREE.Bone | undefined, ax: "x" | "y" | "z", val: number) => {
+        if (!bone) return;
+        const rest = bone.userData.rest as THREE.Euler | undefined;
+        if (rest) bone.rotation.copy(rest);
+        bone.rotation[ax] += val;
+      };
+      // Arms swing on Y for this rig; sweep them down/back for balance.
+      setRot(jg.lArm, "y", -c.armBack + flutter);
+      setRot(jg.rArm, "y", c.armBack - flutter);
+      setRot(jg.lElbow, "x", 0.3);
+      setRot(jg.rElbow, "x", 0.3);
+      setRot(jg.lLeg, "x", 0.2);
+      setRot(jg.rLeg, "x", -0.12);
+      setRot(jg.lKnee, "x", 0.25);
+      setRot(jg.rKnee, "x", 0.1);
+      const targetLean = this.sliding ? c.lean + 0.5 : c.lean;
+      inner.rotation.x += (targetLean - inner.rotation.x) * k;
+      inner.scale.y += ((this.sliding ? 0.6 : 1) - inner.scale.y) * k;
+      inner.position.y = Math.abs(Math.sin(p)) * 0.03;
       return;
     }
 

@@ -391,7 +391,7 @@ function GameplayTab({ cfg, patch }: { cfg: GameConfig; patch: PatchFn }) {
         <FieldBox label="Runner" hint="Which character players control.">
           <div className="grid grid-cols-2 gap-2">
             {([
-              { key: "jake", label: "Jake" },
+              { key: "boy", label: "Boy" },
               { key: "default", label: "Default" },
             ] as const).map((opt) => (
               <button
