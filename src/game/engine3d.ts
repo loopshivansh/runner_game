@@ -65,6 +65,8 @@ export class Runner3D {
   private mixer?: THREE.AnimationMixer;
   private roadMesh?: THREE.Mesh;
   private baseMeshes: THREE.Mesh[] = [];
+  private bannerBelt: THREE.Group[] = [];
+  private bannerBeltLen = 200;
 
   /** Live-tunable scene parameters, driven by the ?debug tuning panel. */
   tune = {
@@ -241,15 +243,7 @@ export class Runner3D {
       }
   }
   applyBanners() {
-    const b = this.tune.banner;
-    for (const o of this.objects)
-      if (o.kind === "banner" && o.card) {
-        const side = Math.sign(o.mesh.position.x || 1);
-        o.card.scale.setScalar(b.width);
-        o.card.position.y = b.y;
-        o.mesh.position.x = side * b.x;
-        o.mesh.rotation.y = (-side * b.angle * Math.PI) / 180;
-      }
+    this.setupBanners();
   }
   rebuildEnv() {
     for (const t of this.envTiles) {
@@ -346,6 +340,7 @@ export class Runner3D {
     } else this.addFallbackCharacter();
 
     await this.loadTextures();
+    this.setupBanners();
     this.mode = "menu";
     this.cb.onLoadProgress?.(100);
   }
@@ -709,6 +704,7 @@ export class Runner3D {
     this.runPhase += dt * 8;
     this.laneX += (0 - this.laneX) * Math.min(1, dt * 8);
     this.scrollEnv(dz);
+    this.scrollBanners(dz);
     this.animateCharacter(dt);
   }
 
@@ -747,6 +743,7 @@ export class Runner3D {
     }
 
     this.scrollEnv(dz);
+    this.scrollBanners(dz);
     this.animateCharacter(dt);
     this.updateObjects(dz);
     this.handleSpawns(dt);
@@ -880,16 +877,11 @@ export class Runner3D {
   private handleSpawns(dt: number) {
     if (this.finishSpawned) return;
     this.spawnTimer -= dt;
-    this.bannerTimer -= dt;
     const g = this.cfg.game;
     const interval = Math.max(0.55, g.spawnInterval * (1 - this.progress * 0.35));
     if (this.spawnTimer <= 0) {
       this.spawnTimer = interval;
       this.spawnPattern();
-    }
-    if (this.bannerTimer <= 0) {
-      this.bannerTimer = 9;
-      this.spawnBanner();
     }
   }
 
@@ -974,23 +966,38 @@ export class Runner3D {
     this.objects.push({ kind, lane, z: SPAWN_Z, mesh: grp });
   }
 
-  /** Spawn a dense corridor of billboards along BOTH sides, running parallel to
-   *  the buildings (facing across the road), so it feels overwhelming. */
-  private spawnBanner() {
+  /** A continuous, always-present corridor of billboards along both sides that
+   *  scrolls with the world (visible on the menu and during play). */
+  private setupBanners() {
+    for (const m of this.bannerBelt) {
+      this.scene.remove(m);
+      this.disposeObj(m);
+    }
+    this.bannerBelt = [];
     if (!this.bannerTextures.length) return;
-    const COUNT = 5; // billboards per side, in a row
-    const GAP = 6; // spacing along the road
-    let idx = this.spawnCount;
-    for (const side of [-1, 1] as const)
-      for (let i = 0; i < COUNT; i++)
-        this.makeBanner(
-          side,
-          SPAWN_Z - i * GAP,
-          this.bannerTextures[idx++ % this.bannerTextures.length],
-        );
+    const SPACING = 7; // distance between consecutive boards on a side
+    const total = Math.abs(SPAWN_Z) + DESPAWN_Z + 20;
+    const n = Math.ceil(total / SPACING);
+    this.bannerBeltLen = n * SPACING;
+    let idx = 0;
+    for (let i = 0; i < n; i++)
+      for (const side of [-1, 1] as const) {
+        const m = this.buildBanner(side, this.bannerTextures[idx++ % this.bannerTextures.length]);
+        // stagger the two sides so they alternate down the street
+        m.position.z = DESPAWN_Z - i * SPACING - (side > 0 ? SPACING / 2 : 0);
+        this.scene.add(m);
+        this.bannerBelt.push(m);
+      }
   }
 
-  private makeBanner(side: -1 | 1, z: number, tex: THREE.Texture) {
+  private scrollBanners(dz: number) {
+    for (const m of this.bannerBelt) {
+      m.position.z += dz;
+      if (m.position.z > this.camera.position.z + 6) m.position.z -= this.bannerBeltLen;
+    }
+  }
+
+  private buildBanner(side: -1 | 1, tex: THREE.Texture): THREE.Group {
     const b = this.tune.banner;
     const grp = new THREE.Group();
     const img = tex.image as { width?: number; height?: number } | undefined;
@@ -1006,10 +1013,9 @@ export class Runner3D {
     grp.add(frame);
 
     const panel = new THREE.Mesh(
-      new THREE.PlaneGeometry(1, aspect),
+      new THREE.PlaneGeometry(w, h),
       new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }),
     );
-    panel.scale.setScalar(w);
     panel.position.y = b.y;
     grp.add(panel);
 
@@ -1024,10 +1030,9 @@ export class Runner3D {
     }
 
     // Angled along the building line (0 = facing player, 90 = fully parallel).
-    grp.rotation.y = -side * (b.angle * Math.PI) / 180;
-    grp.position.set(side * b.x, 0, z);
-    this.scene.add(grp);
-    this.objects.push({ kind: "banner", lane: 0, z, mesh: grp, card: panel });
+    grp.rotation.y = (-side * b.angle * Math.PI) / 180;
+    grp.position.x = side * b.x;
+    return grp;
   }
 
   private spawnFinish() {
