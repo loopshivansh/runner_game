@@ -38,6 +38,8 @@ const SCHEMA: Group[] = [
       { key: "rotDeg", min: 0, max: 360, step: 5 },
       { key: "cityScale", min: 4, max: 60, step: 0.5 },
       { key: "tileGap", min: -20, max: 40, step: 0.5 },
+      { key: "buildLeft", min: -10, max: 20, step: 0.5 },
+      { key: "buildRight", min: -10, max: 20, step: 0.5 },
     ],
   },
   {
@@ -65,6 +67,8 @@ const SCHEMA: Group[] = [
       { key: "y", min: 0, max: 12, step: 0.1 },
       { key: "x", min: 2, max: 16, step: 0.25 },
       { key: "angle", min: 0, max: 90, step: 5 },
+      { key: "gapMin", min: 2, max: 30, step: 0.5 },
+      { key: "gapMax", min: 2, max: 40, step: 0.5 },
     ],
   },
   {

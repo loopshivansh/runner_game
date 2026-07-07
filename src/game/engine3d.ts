@@ -56,6 +56,10 @@ export class Runner3D {
   private clock = new THREE.Clock();
 
   private envTiles: THREE.Object3D[] = [];
+  private envLeft: THREE.Object3D[] = [];
+  private envRight: THREE.Object3D[] = [];
+  private envClipL = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0);
+  private envClipR = new THREE.Plane(new THREE.Vector3(1, 0, 0), 0);
   private envDepth = 60;
   private envWrapDist = 180;
   private envSource: THREE.Object3D | null = null;
@@ -70,13 +74,13 @@ export class Runner3D {
 
   /** Live-tunable scene parameters, driven by the ?debug tuning panel. */
   tune = {
-    env: { targetWidth: 66.5, sideX: 42, offX: 0, offY: 0, offZ: 0, rotDeg: 140, cityScale: 12.5, tileGap: -6.5 },
-    road: { width: 8 },
-    base: { x: 7.5, width: 10, height: 0.3 },
+    env: { targetWidth: 66.5, sideX: 42, offX: 0, offY: 0, offZ: 0, rotDeg: 140, cityScale: 12.5, tileGap: -6.5, buildLeft: 3, buildRight: 2.5 },
+    road: { width: 13 },
+    base: { x: 7.5, width: 9, height: 0.3 },
     camera: { x: 0, y: 3.5, z: 5, lookX: 0, lookY: 1.3, lookZ: -6, fov: 60 },
     char: { scale: 1, offY: 0, offZ: 0 },
     product: { size: 1.2, y: 0.85 },
-    banner: { width: 3.2, y: 2.6, x: 3.9, angle: 25 },
+    banner: { width: 4.6, y: 2.3, x: 4, angle: 60, gapMin: 3, gapMax: 40 },
     fog: { near: 30, far: 154 },
   };
   private character?: THREE.Object3D;
@@ -277,8 +281,12 @@ export class Runner3D {
     else if (group === "fog") this.applyFog();
     else if (group === "char") this.applyChar();
     else if (group === "product") this.applyProducts();
-    else if (group === "banner") this.applyBanners();
-    else if (group === "env") this.rebuildEnv();
+    else if (group === "banner")
+      key === "gapMin" || key === "gapMax" ? this.setupBanners() : this.applyBanners();
+    else if (group === "env")
+      key === "buildLeft" || key === "buildRight"
+        ? this.applyBuildOffset()
+        : this.rebuildEnv();
     else if (group === "road") this.applyRoad();
     else if (group === "base") this.applyBase();
   }
@@ -392,14 +400,29 @@ export class Runner3D {
     const horizWidth = Math.min(size.x, size.z);
     const scale = horizWidth > 0 ? t.cityScale / horizWidth : 1;
 
-    const makeTile = (obj: THREE.Object3D) => {
-      const g = new THREE.Group();
+    // Clip each copy to one side of the road so the two building rows can be
+    // moved toward / away from the road independently. The clip line moves with
+    // the offset so shifting a row never reveals the opposite row.
+    this.renderer.localClippingEnabled = true;
+    this.envClipL.constant = -t.buildLeft;
+    this.envClipR.constant = -t.buildRight;
+
+    const makeTile = (clip: THREE.Plane) => {
+      const obj = root.clone(true);
       obj.scale.setScalar(scale);
       obj.position.x = -center.x * scale + t.offX;
       obj.position.z = -center.z * scale;
       obj.position.y = -box.min.y * scale + t.offY;
       if (size.x > size.z) obj.rotation.y = Math.PI / 2;
       this.hideCityRoad(obj);
+      obj.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh && m.material) {
+          m.material = (m.material as THREE.Material).clone();
+          (m.material as THREE.Material).clippingPlanes = [clip];
+        }
+      });
+      const g = new THREE.Group();
       g.add(obj);
       return g;
     };
@@ -409,14 +432,27 @@ export class Runner3D {
     const spacing = this.envDepth - t.tileGap;
     this.envWrapDist = spacing * 3;
 
-    const tileA = makeTile(root.clone(true));
-    const tileB = makeTile(root.clone(true));
-    const tileC = makeTile(root.clone(true));
-    tileA.position.z = t.offZ;
-    tileB.position.z = -spacing + t.offZ;
-    tileC.position.z = -spacing * 2 + t.offZ;
-    this.envTiles = [tileA, tileB, tileC];
-    this.envTiles.forEach((t2) => this.scene.add(t2));
+    this.envTiles = [];
+    this.envLeft = [];
+    this.envRight = [];
+    for (let i = 0; i < 3; i++) {
+      const L = makeTile(this.envClipL);
+      const R = makeTile(this.envClipR);
+      L.position.set(-t.buildLeft, 0, -i * spacing + t.offZ);
+      R.position.set(t.buildRight, 0, -i * spacing + t.offZ);
+      this.scene.add(L, R);
+      this.envTiles.push(L, R);
+      this.envLeft.push(L);
+      this.envRight.push(R);
+    }
+  }
+
+  /** Move the left / right building rows toward or away from the road. */
+  applyBuildOffset() {
+    this.envClipL.constant = -this.tune.env.buildLeft;
+    this.envClipR.constant = -this.tune.env.buildRight;
+    for (const g of this.envLeft) g.position.x = -this.tune.env.buildLeft;
+    for (const g of this.envRight) g.position.x = this.tune.env.buildRight;
   }
 
   /**
@@ -976,25 +1012,44 @@ export class Runner3D {
     }
     this.bannerBelt = [];
     if (!this.bannerTextures.length) return;
-    const SPACING = 7; // distance between consecutive boards on a side
-    const total = Math.abs(SPAWN_Z) + DESPAWN_Z + 20;
-    const n = Math.ceil(total / SPACING);
-    this.bannerBeltLen = n * SPACING;
+    const b = this.tune.banner;
+    const coverage = Math.abs(SPAWN_Z) + DESPAWN_Z + 24;
+    const n = Math.ceil(coverage / Math.max(2, b.gapMin));
     let idx = 0;
-    for (let i = 0; i < n; i++)
-      for (const side of [-1, 1] as const) {
+    // Each side gets its own random spacing sequence.
+    for (const side of [-1, 1] as const) {
+      let z = DESPAWN_Z - Math.random() * b.gapMax;
+      for (let i = 0; i < n; i++) {
         const m = this.buildBanner(side, this.bannerTextures[idx++ % this.bannerTextures.length]);
-        // stagger the two sides so they alternate down the street
-        m.position.z = DESPAWN_Z - i * SPACING - (side > 0 ? SPACING / 2 : 0);
+        m.position.z = z;
         this.scene.add(m);
         this.bannerBelt.push(m);
+        z -= this.bannerGap();
       }
+    }
+  }
+
+  /** A random gap between consecutive boards on a side. */
+  private bannerGap() {
+    const b = this.tune.banner;
+    const lo = Math.max(2, b.gapMin);
+    const hi = Math.max(lo + 0.5, b.gapMax);
+    return lo + Math.random() * (hi - lo);
   }
 
   private scrollBanners(dz: number) {
+    const camZ = this.camera.position.z + 6;
     for (const m of this.bannerBelt) {
       m.position.z += dz;
-      if (m.position.z > this.camera.position.z + 6) m.position.z -= this.bannerBeltLen;
+      if (m.position.z > camZ) {
+        // recycle behind the furthest board on the same side, with a new gap
+        const side = (m.userData as { side: number }).side;
+        let minZ = Infinity;
+        for (const o of this.bannerBelt)
+          if (o !== m && (o.userData as { side: number }).side === side)
+            minZ = Math.min(minZ, o.position.z);
+        m.position.z = (Number.isFinite(minZ) ? minZ : m.position.z) - this.bannerGap();
+      }
     }
   }
 
