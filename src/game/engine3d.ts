@@ -74,7 +74,7 @@ export class Runner3D {
     camera: { x: 0, y: 3.0, z: 6.4, lookX: 0, lookY: 1.1, lookZ: -6, fov: 58 },
     char: { scale: 1, offY: 0, offZ: 0 },
     product: { size: 1.1, y: 1.15 },
-    banner: { width: 5.2, y: 2.4 },
+    banner: { width: 4, y: 3, x: 5.5 },
     fog: { near: 40, far: 88 },
   };
   private character?: THREE.Object3D;
@@ -137,21 +137,24 @@ export class Runner3D {
     r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.toneMapping = THREE.ACESFilmicToneMapping;
-    r.toneMappingExposure = 1.05;
+    r.toneMappingExposure = 1.35;
     this.renderer = r;
 
-    // White fog + a bright near-white sky so the horizon blends into the haze.
-    this.scene.background = new THREE.Color("#eef1f4");
+    // Bright morning sky + white haze so the horizon blends into the fog.
+    this.scene.background = new THREE.Color("#eaf3ff");
     this.scene.fog = new THREE.Fog(0xffffff, this.tune.fog.near, this.tune.fog.far);
 
     this.camera = new THREE.PerspectiveCamera(this.tune.camera.fov, 1, 0.1, 200);
     this.applyCamera();
 
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x5a6272, 1.15);
+    // Morning light: bright sky fill + a warm low sun.
+    const hemi = new THREE.HemisphereLight(0xdcecff, 0xcbb89a, 2.6);
     this.scene.add(hemi);
-    const dir = new THREE.DirectionalLight(0xfff2dd, 1.5);
-    dir.position.set(6, 14, 8);
+    const dir = new THREE.DirectionalLight(0xfff0d4, 3.1);
+    dir.position.set(-9, 9, 6);
     this.scene.add(dir);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+    this.scene.add(ambient);
 
     // Our own road: a dark strip the runner travels on (city road is hidden).
     const road = new THREE.Mesh(
@@ -181,17 +184,28 @@ export class Runner3D {
   }
 
   private addLaneGuides() {
-    // Subtle glowing lines between lanes so the player can read the track.
+    // Dashed white lane markings on the two boundaries between the 3 lanes,
+    // so all lanes read clearly.
+    const len = Math.abs(SPAWN_Z) + DESPAWN_Z + 20;
+    const c = document.createElement("canvas");
+    c.width = 8;
+    c.height = 64;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(1, 0, 6, 34); // dash + gap
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(1, Math.round(len / 3));
     const mat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
+      map: tex,
       transparent: true,
-      opacity: 0.18,
+      opacity: 0.85,
+      depthWrite: false,
     });
-    for (const x of [-LANE_X / 2 - LANE_X / 2, LANE_X / 2 + LANE_X / 2]) {
-      const geo = new THREE.PlaneGeometry(0.08, Math.abs(SPAWN_Z) + DESPAWN_Z);
-      const line = new THREE.Mesh(geo, mat);
+    for (const x of [-LANE_X / 2, LANE_X / 2]) {
+      const line = new THREE.Mesh(new THREE.PlaneGeometry(0.16, len), mat);
       line.rotation.x = -Math.PI / 2;
-      line.position.set(x, 0.02, (SPAWN_Z + DESPAWN_Z) / 2);
+      line.position.set(x, 0.015, (SPAWN_Z + DESPAWN_Z) / 2);
       this.scene.add(line);
     }
   }
@@ -231,6 +245,7 @@ export class Runner3D {
       if (o.kind === "banner" && o.card) {
         o.card.scale.setScalar(this.tune.banner.width);
         o.card.position.y = this.tune.banner.y;
+        o.mesh.position.x = Math.sign(o.mesh.position.x || 1) * this.tune.banner.x;
       }
   }
   rebuildEnv() {
@@ -870,7 +885,7 @@ export class Runner3D {
       this.spawnPattern();
     }
     if (this.bannerTimer <= 0) {
-      this.bannerTimer = 5.5;
+      this.bannerTimer = 4;
       this.spawnBanner();
     }
   }
@@ -879,17 +894,18 @@ export class Runner3D {
     this.spawnCount++;
     const lanes: Array<-1 | 0 | 1> = [-1, 0, 1];
     const roll = Math.random();
-    if (roll < 0.42) {
-      // product run in one lane
+    if (roll < 0.58) {
+      // product run in one lane (most common — easy pickups)
       const lane = lanes[Math.floor(Math.random() * 3)];
       for (let i = 0; i < 4; i++) this.spawnProduct(lane, SPAWN_Z - i * 3.4);
-    } else if (roll < 0.78) {
+    } else if (roll < 0.92) {
+      // a single obstacle with products in a free lane
       const obLane = lanes[Math.floor(Math.random() * 3)];
       this.spawnObstacle(obLane, Math.random() < 0.6 ? "low" : "high");
       const free = lanes.filter((l) => l !== obLane);
       this.spawnProduct(free[Math.floor(Math.random() * free.length)], SPAWN_Z);
     } else {
-      // two obstacles, always one open lane
+      // two obstacles (rare), always one open lane
       const open = lanes[Math.floor(Math.random() * 3)];
       for (const l of lanes)
         if (l !== open) this.spawnObstacle(l, Math.random() < 0.6 ? "low" : "high");
@@ -959,24 +975,44 @@ export class Runner3D {
     if (!this.bannerTextures.length) return;
     const side = Math.random() < 0.5 ? -1 : 1;
     const tex = this.bannerTextures[this.spawnCount % this.bannerTextures.length];
+    const b = this.tune.banner;
     const grp = new THREE.Group();
     const img = tex.image as { width?: number; height?: number } | undefined;
     const aspect = (img?.height || 1) / (img?.width || 2);
+    const w = b.width;
+    const h = w * aspect;
+
+    // dark frame behind the banner
+    const frame = new THREE.Mesh(
+      new THREE.BoxGeometry(w * 1.1, h * 1.15, 0.2),
+      new THREE.MeshStandardMaterial({ color: 0x191b21, roughness: 0.9 }),
+    );
+    frame.position.set(0, b.y, -0.12);
+    grp.add(frame);
+
+    // the banner image (unit plane scaled so it can be live-tuned)
     const panel = new THREE.Mesh(
       new THREE.PlaneGeometry(1, aspect),
       new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }),
     );
-    panel.scale.setScalar(this.tune.banner.width);
-    panel.position.y = this.tune.banner.y;
-    panel.rotation.y = side < 0 ? Math.PI / 2 : -Math.PI / 2;
+    panel.scale.setScalar(w);
+    panel.position.y = b.y;
     grp.add(panel);
-    const post = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, this.tune.banner.y, 0.2),
-      new THREE.MeshStandardMaterial({ color: 0x23262c }),
-    );
-    post.position.y = this.tune.banner.y / 2;
-    grp.add(post);
-    grp.position.set(side * 8.5, 0, SPAWN_Z);
+
+    // two support posts down to the base
+    const legH = b.y - h / 2;
+    for (const px of [-w * 0.32, w * 0.32]) {
+      const post = new THREE.Mesh(
+        new THREE.BoxGeometry(0.18, legH, 0.18),
+        new THREE.MeshStandardMaterial({ color: 0x2a2d33 }),
+      );
+      post.position.set(px, legH / 2, 0);
+      grp.add(post);
+    }
+
+    // stand at the roadside on the brown base, angled to face the runner
+    grp.rotation.y = side * 0.5;
+    grp.position.set(side * b.x, 0, SPAWN_Z);
     this.scene.add(grp);
     this.objects.push({ kind: "banner", lane: 0, z: SPAWN_Z, mesh: grp, card: panel });
   }

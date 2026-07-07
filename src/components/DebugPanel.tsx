@@ -63,6 +63,7 @@ const SCHEMA: Group[] = [
     ctrls: [
       { key: "width", min: 1, max: 16, step: 0.2 },
       { key: "y", min: 0, max: 12, step: 0.1 },
+      { key: "x", min: 2, max: 16, step: 0.25 },
     ],
   },
   {
