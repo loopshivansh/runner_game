@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { GameConfig } from "@/lib/config";
-import { Badge, LoopLogo, LoopMark } from "./brand";
+import { LoopLogo, LoopMark } from "./brand";
 import { RunnerArt, SkyScene } from "./scene";
 import {
   CloseIcon,
@@ -21,15 +21,8 @@ import {
 } from "./ui";
 
 /* --------------------------- Score / coin chip -------------------------- */
-function CoinChip({ config }: { config: GameConfig }) {
-  return (
-    <span
-      className="flex items-center justify-center rounded-full shrink-0"
-      style={{ width: 24, height: 24, background: config.brand.primaryColor }}
-    >
-      <LoopMark size={15} color="#fff" />
-    </span>
-  );
+function CoinChip() {
+  return <LoopMark size={24} />;
 }
 
 /* ------------------------------- Splash -------------------------------- */
@@ -114,9 +107,8 @@ export function InfoOverlay({
           </button>
         </div>
 
-        <div className="flex gap-3 justify-center py-6">
-          <BadgeCard config={config} tier="gold" label="Gold Badge" />
-          <BadgeCard config={config} tier="silver" label="Silver Badge" />
+        <div className="flex justify-center py-6">
+          <PlaybookReward config={config} />
         </div>
 
         <p className="font-display font-semibold text-[15px] leading-snug mb-5 text-white/90">
@@ -134,35 +126,6 @@ export function InfoOverlay({
           Got It
         </PillButton>
       </div>
-    </div>
-  );
-}
-
-function BadgeCard({
-  config,
-  tier,
-  label,
-}: {
-  config: GameConfig;
-  tier: "gold" | "silver";
-  label: string;
-}) {
-  const accent = tier === "gold" ? config.brand.goldColor : config.brand.silverColor;
-  return (
-    <div
-      className="flex-1 flex flex-col items-center gap-2 rounded-2xl py-4 px-2"
-      style={{
-        background: "rgba(255,255,255,0.03)",
-        border: "1px solid rgba(255,255,255,0.07)",
-      }}
-    >
-      <Badge tier={tier} config={config} size={72} />
-      <span
-        className="font-display font-bold text-[12px] tracking-wide"
-        style={{ color: accent }}
-      >
-        {label}
-      </span>
     </div>
   );
 }
@@ -424,7 +387,7 @@ export function Hud({
           <TimerIcon size={16} /> {timeLeft} Sec
         </span>
         <span className="hud-pill">
-          <CoinChip config={config} /> {score}
+          <CoinChip /> {score}
         </span>
       </div>
       <div className="flex flex-col gap-2 items-end pointer-events-auto">
@@ -533,21 +496,15 @@ export function GameOver({
             }, 0 10px 30px -12px rgba(0,0,0,0.6)`,
           }}
         >
-          <CoinChip config={config} />
+          <CoinChip />
           {config.copy.scoreLabel}: {score}
         </span>
 
-        {/* Badge / reward */}
-        {gold ? (
-          <div className="relative py-2 w-full flex justify-center">
-            <PlaybookReward config={config} />
-            <Confetti color={config.brand.goldColor} />
-          </div>
-        ) : (
-          <div className="relative py-2">
-            <Badge tier={tier} config={config} size={150} />
-          </div>
-        )}
+        {/* Reward — the playbook / giveaway image (both win and lose) */}
+        <div className="relative py-2 w-full flex justify-center">
+          <PlaybookReward config={config} />
+          {gold && <Confetti color={config.brand.goldColor} />}
+        </div>
 
         <p className="font-display font-semibold text-[19px] leading-snug max-w-[290px] text-white">
           {gold ? config.copy.winMessage : config.copy.loseMessage}
@@ -602,8 +559,8 @@ function PlaybookReward({ config }: { config: GameConfig }) {
     <div
       className="rounded-2xl overflow-hidden"
       style={{
-        maxWidth: 260,
-        width: "72%",
+        maxWidth: 208,
+        width: "58%",
         border: "1px solid rgba(255,255,255,0.1)",
         boxShadow: "0 18px 40px -16px rgba(0,0,0,0.7)",
       }}

@@ -441,8 +441,7 @@ function AssetsTab({ cfg, patch }: { cfg: GameConfig; patch: PatchFn }) {
       <Upload label="Collectible / coin" value={a.coinUrl} slot="coin" onChange={(v) => patch("assets", { coinUrl: v })} />
       <MultiUpload label="Obstacles" values={a.obstacleUrls} slot="obstacle" onChange={(v) => patch("assets", { obstacleUrls: v })} />
       <MultiUpload label="Billboards (customer/product ads)" values={a.billboardUrls} slot="billboard" onChange={(v) => patch("assets", { billboardUrls: v })} />
-      <Upload label="Gold badge" value={a.badgeGoldUrl} slot="badge-gold" onChange={(v) => patch("assets", { badgeGoldUrl: v })} />
-      <Upload label="Silver badge" value={a.badgeSilverUrl} slot="badge-silver" onChange={(v) => patch("assets", { badgeSilverUrl: v })} />
+      <Upload label="Playbook / giveaway image" value={a.playbookImageUrl} slot="playbook" onChange={(v) => patch("assets", { playbookImageUrl: v })} />
     </Section>
   );
 }

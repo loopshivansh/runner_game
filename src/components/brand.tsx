@@ -4,26 +4,26 @@ import { useState } from "react";
 import type { GameConfig } from "@/lib/config";
 
 /**
- * The Loop mark — a continuous looping glyph rendered as an SVG.
- * Used for the coin/score chip and as a fallback for the wordmark.
+ * The Loop mark — the official Loop favicon, clipped to a full circle.
+ * (`color` is accepted for backwards-compatibility but ignored.)
  */
-export function LoopMark({
-  size = 32,
-  color = "var(--brand-primary)",
-}: {
-  size?: number;
-  color?: string;
-}) {
+export function LoopMark({ size = 32 }: { size?: number; color?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" aria-hidden>
-      <path
-        d="M17 14c-6 0-11 4.5-11 10s4.7 10 10.5 10c6.5 0 9.5-5.5 14-11 3.6-4.4 6-8 10.5-8 4 0 6.5 3 6.5 7s-3 7-7 7c-3.4 0-5.6-2-8.6-6"
-        stroke={color}
-        strokeWidth="5.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/assets/loop-mark.png"
+      alt="Loop"
+      width={size}
+      height={size}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 999,
+        objectFit: "cover",
+        display: "block",
+      }}
+      draggable={false}
+    />
   );
 }
 
