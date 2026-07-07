@@ -78,7 +78,7 @@ export class Runner3D {
     env: { targetWidth: 66.5, sideX: 42, offX: 0, offY: 0, offZ: 0, rotDeg: 140, cityScale: 12.5, tileGap: -6.5, buildLeft: 3, buildRight: 2.5 },
     road: { width: 13 },
     base: { x: 7.5, width: 9, height: 0.3 },
-    camera: { x: 0, y: 3.5, z: 5, lookX: 0, lookY: 1.3, lookZ: -6, fov: 60 },
+    camera: { x: 0, y: 3.5, z: 5, lookX: 0, lookY: 1.3, lookZ: -6, fov: 70 },
     char: { scale: 1, offY: 0, offZ: 0, lean: 0.55, armBack: 1.3 },
     product: { size: 1.2, y: 0.85 },
     banner: { width: 4.6, y: 2.3, x: 4, angle: 60, gapMin: 3, gapMax: 40 },
